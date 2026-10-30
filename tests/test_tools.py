@@ -331,3 +331,17 @@ def test_is_position_name_matches_position_components(name: str) -> None:
 )
 def test_is_position_name_ignores_other_names(name: str) -> None:
     assert not is_position_name(name)
+
+
+def test_error_detail_that_echoes_the_token_is_scrubbed() -> None:
+    def echo(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(500, json={"detail": request.headers["Authorization"]})
+
+    client = VehicleServerClient(
+        Settings(server_url="http://vehicle-server.test", api_token=TOKEN),
+        transport=httpx.MockTransport(echo),
+    )
+    with pytest.raises(ToolError) as excinfo:
+        VehicleTools(client).list_sessions()
+    assert TOKEN not in str(excinfo.value)
+    assert "***" in str(excinfo.value)

@@ -81,7 +81,8 @@ class VehicleServerClient:
 
     def _status_message(self, response: httpx.Response) -> str:
         status = response.status_code
-        detail = _detail(response)
+        # A server that echoes the request headers must not leak the token to the model.
+        detail = _detail(response).replace(self._settings.api_token, "***")
         hint = _STATUS_HINTS.get(status)
         if hint is not None:
             return f"{hint}: {detail}"

@@ -212,7 +212,10 @@ class VehicleTools:
         return compute_stats(self._one_series(payload, signal))
 
     def compare_sessions(self, session_a: str, session_b: str, signal: str) -> dict[str, Any]:
-        """Compare one signal across two sessions and report the b - a deltas."""
+        """Compare one signal across two sessions and report the b - a deltas.
+
+        Each side covers its whole session; the two rides are not aligned in time.
+        """
         stats_a = self.compute_signal_stats(session_a, signal)
         stats_b = self.compute_signal_stats(session_b, signal)
 
