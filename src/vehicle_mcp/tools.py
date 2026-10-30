@@ -8,7 +8,9 @@ GET requests only and turns expected failures into ToolError messages.
 from __future__ import annotations
 
 import re
+import statistics
 from collections.abc import Callable
+from datetime import UTC, date, datetime, time
 from typing import Any, Literal
 
 from mcp.server.mcpserver.exceptions import ToolError
@@ -42,6 +44,49 @@ def _position_error(signal: str) -> ToolError:
         f"series {signal!r} looks like a GPS position; vehicle-server does not expose "
         "position yet (D-076 item 3 is not implemented), so vehicle-mcp has no position tool"
     )
+
+
+def _parse_bound(value: str, *, end: bool) -> datetime:
+    """Parse an ISO 8601 date or timestamp; date-only bounds cover the whole UTC day."""
+    text = value.strip()
+    try:
+        day = date.fromisoformat(text)
+    except ValueError:
+        day = None
+    if day is not None:
+        return datetime.combine(day, time.max if end else time.min, tzinfo=UTC)
+
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        raise ToolError(
+            f"{'end_date' if end else 'start_date'} must be an ISO 8601 date or timestamp"
+        ) from None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
+
+
+def _parse_created(value: Any) -> datetime | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.strip())
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
+
+
+def _as_float(value: Any) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return float(value)
+
+
+def _status_key(value: Any) -> str:
+    return value if isinstance(value, str) and value else "unknown"
 
 
 class VehicleTools:
@@ -225,4 +270,58 @@ class VehicleTools:
             "session_a": {"session_id": session_a, **stats_a},
             "session_b": {"session_id": session_b, **stats_b},
             "delta": delta,
+        }
+
+    def query_ride_history(self, start_date: str, end_date: str) -> dict[str, Any]:
+        """Summarise sessions whose created_utc is inside the inclusive date range.
+
+        Date-only bounds cover the whole UTC day. Sessions with a missing or
+        unparseable created_utc are returned under `undated`, outside the summary.
+        """
+        start = _parse_bound(start_date, end=False)
+        end = _parse_bound(end_date, end=True)
+        if start > end:
+            raise ToolError("start_date must be less than or equal to end_date")
+
+        payload = self._call(self._source.sessions)
+        if not isinstance(payload, list):
+            raise ToolError("vehicle-server returned an unexpected sessions response")
+
+        dated: list[tuple[datetime, dict[str, Any]]] = []
+        undated: list[Any] = []
+        for session in payload:
+            created = (
+                _parse_created(session.get("created_utc")) if isinstance(session, dict) else None
+            )
+            if created is None:
+                undated.append(session)
+            else:
+                dated.append((created, session))
+
+        in_range = sorted(
+            (item for item in dated if start <= item[0] <= end),
+            key=lambda item: item[0],
+        )
+        sessions = [session for _, session in in_range]
+        losses = [
+            loss
+            for session in sessions
+            if (loss := _as_float(session.get("loss_percent"))) is not None
+        ]
+        histogram: dict[str, int] = {}
+        for session in sessions:
+            key = _status_key(session.get("status"))
+            histogram[key] = histogram.get(key, 0) + 1
+
+        return {
+            "start_date": start_date,
+            "end_date": end_date,
+            "count": len(sessions),
+            "total_packet_count": int(
+                sum(_as_float(session.get("packet_count")) or 0.0 for session in sessions)
+            ),
+            "mean_loss_percent": statistics.fmean(losses) if losses else None,
+            "status_histogram": dict(sorted(histogram.items())),
+            "sessions": sessions,
+            "undated": undated,
         }

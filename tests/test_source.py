@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
 from vehicle_mcp.source import HistorySource
 from vehicle_mcp.tools import VehicleTools
 
@@ -19,8 +21,11 @@ SERIES = {
 class InMemorySource:
     """A non-HTTP HistorySource: the tools must not depend on vehicle-server."""
 
+    def __init__(self, sessions: list[dict[str, Any]] | None = None) -> None:
+        self._sessions = sessions if sessions is not None else [{"session_id": "mem-1"}]
+
     def sessions(self) -> Any:
-        return [{"session_id": "mem-1"}]
+        return self._sessions
 
     def report(self, session_id: str, *, text: bool = False) -> Any:
         return "synthetic" if text else {"session_id": session_id}
@@ -46,3 +51,29 @@ def test_tools_run_on_any_history_source() -> None:
     assert [s["name"] for s in tools.list_series("mem-1")["series"]] == ["derived.sample"]
     stats = tools.compute_signal_stats("mem-1", "derived.sample")
     assert (stats["mean"], stats["min"], stats["max"], stats["duration_ms"]) == (2.5, 1.0, 4.0, 300)
+
+
+def test_query_ride_history_runs_on_any_history_source() -> None:
+    source: HistorySource = InMemorySource(
+        [
+            {
+                "session_id": "a",
+                "created_utc": "2026-10-01T10:00:00Z",
+                "packet_count": 10,
+                "loss_percent": 0.5,
+                "status": "complete",
+            },
+            {
+                "session_id": "b",
+                "created_utc": "2026-10-02T10:00:00Z",
+                "packet_count": 20,
+                "loss_percent": 1.5,
+                "status": "failed",
+            },
+        ]
+    )
+    result = VehicleTools(source).query_ride_history("2026-10-01", "2026-10-01")
+    assert [session["session_id"] for session in result["sessions"]] == ["a"]
+    assert result["count"] == 1
+    assert result["total_packet_count"] == 10
+    assert result["mean_loss_percent"] == pytest.approx(0.5)

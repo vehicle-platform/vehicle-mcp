@@ -222,6 +222,71 @@ def test_compare_sessions_rejects_unknown_signal_in_second_session(tools: Vehicl
         tools.compare_sessions("s1", "s2", "did.HAND")
 
 
+def test_query_ride_history_filters_inclusive_range_and_sorts(ride_tools: VehicleTools) -> None:
+    result = ride_tools.query_ride_history("2026-10-01", "2026-10-02")
+    assert [session["session_id"] for session in result["sessions"]] == [
+        "ride-early",
+        "ride-middle",
+        "ride-failed",
+    ]
+    assert result["count"] == 3
+    assert result["total_packet_count"] == 700
+    assert result["mean_loss_percent"] == pytest.approx((0.1 + 0.2 + 0.4) / 3)
+    assert result["status_histogram"] == {"complete": 2, "failed": 1}
+
+
+def test_query_ride_history_date_only_bounds_cover_the_whole_day(
+    ride_tools: VehicleTools,
+) -> None:
+    result = ride_tools.query_ride_history("2026-10-01", "2026-10-01")
+    assert [session["session_id"] for session in result["sessions"]] == [
+        "ride-early",
+        "ride-middle",
+    ]
+
+
+def test_query_ride_history_timestamp_bounds_are_exact(ride_tools: VehicleTools) -> None:
+    result = ride_tools.query_ride_history("2026-10-01T10:00:00Z", "2026-10-02T11:59:59Z")
+    assert [session["session_id"] for session in result["sessions"]] == ["ride-middle"]
+
+
+def test_query_ride_history_reports_undated_sessions(ride_tools: VehicleTools) -> None:
+    result = ride_tools.query_ride_history("2026-10-01", "2026-10-03")
+    assert [session["session_id"] for session in result["undated"]] == [
+        "ride-undated",
+        "ride-bad-date",
+    ]
+    assert all(
+        session["session_id"] not in {"ride-undated", "ride-bad-date"}
+        for session in result["sessions"]
+    )
+
+
+def test_query_ride_history_empty_range(ride_tools: VehicleTools) -> None:
+    result = ride_tools.query_ride_history("2025-01-01", "2025-01-02")
+    assert result["sessions"] == []
+    assert result["count"] == 0
+    assert result["total_packet_count"] == 0
+    assert result["mean_loss_percent"] is None
+    assert result["status_histogram"] == {}
+
+
+def test_query_ride_history_rejects_reversed_range(
+    ride_tools: VehicleTools, fake_server: FakeVehicleServer
+) -> None:
+    with pytest.raises(ToolError, match="start_date"):
+        ride_tools.query_ride_history("2026-10-03", "2026-10-01")
+    assert fake_server.requests == []
+
+
+def test_query_ride_history_rejects_invalid_date(
+    ride_tools: VehicleTools, fake_server: FakeVehicleServer
+) -> None:
+    with pytest.raises(ToolError, match="ISO 8601"):
+        ride_tools.query_ride_history("yesterday", "2026-10-01")
+    assert fake_server.requests == []
+
+
 @pytest.mark.parametrize(
     ("session_id", "status"),
     [
@@ -277,6 +342,7 @@ def test_every_request_is_an_authenticated_get(
     tools.get_timeseries_slice("s1", ["did.ENGINE_SPEED"])
     tools.compute_signal_stats("s1", "did.ENGINE_SPEED")
     tools.compare_sessions("s1", "s2", "did.ENGINE_SPEED")
+    tools.query_ride_history("2026-10-01", "2026-10-02")
 
     assert fake_server.requests
     for request in fake_server.requests:
@@ -294,6 +360,7 @@ def test_tool_results_never_contain_the_token(tools: VehicleTools) -> None:
         tools.get_timeseries_slice("s1", ["did.ENGINE_SPEED"]),
         tools.compute_signal_stats("s1", "did.ENGINE_SPEED"),
         tools.compare_sessions("s1", "s2", "did.ENGINE_SPEED"),
+        tools.query_ride_history("2026-10-01", "2026-10-02"),
     ]
     assert TOKEN not in json.dumps(results, default=str)
 

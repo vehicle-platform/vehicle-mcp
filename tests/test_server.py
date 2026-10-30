@@ -35,6 +35,7 @@ def test_registers_exactly_the_read_only_tools() -> None:
         "get_timeseries_slice",
         "compute_signal_stats",
         "compare_sessions",
+        "query_ride_history",
     }
     assert all("position" not in tool.name for tool in tools)
 
@@ -72,6 +73,11 @@ def test_happy_path_through_mcp() -> None:
         report_text = asyncio.run(
             server.call_tool("get_session_report", {"session_id": "s1", "format": "text"})
         )
+        history = asyncio.run(
+            server.call_tool(
+                "query_ride_history", {"start_date": "2026-10-01", "end_date": "2026-10-02"}
+            )
+        )
     finally:
         client.close()
 
@@ -81,3 +87,5 @@ def test_happy_path_through_mcp() -> None:
     assert '"summary"' in "\n".join(block.text for block in report_json.content)
     assert report_text.is_error is False
     assert "# Session s1" in "\n".join(block.text for block in report_text.content)
+    assert history.is_error is False
+    assert '"undated"' in "\n".join(block.text for block in history.content)
