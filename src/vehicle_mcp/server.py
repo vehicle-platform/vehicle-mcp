@@ -9,6 +9,7 @@ from mcp.server.mcpserver import MCPServer
 from . import __version__
 from .client import VehicleServerClient
 from .config import ConfigError, load_settings
+from .source import HistorySource
 from .tools import VehicleTools
 
 INSTRUCTIONS = (
@@ -20,13 +21,13 @@ INSTRUCTIONS = (
 )
 
 
-def build_server(client: VehicleServerClient) -> MCPServer:
+def build_server(source: HistorySource) -> MCPServer:
     server = MCPServer(
         name="vehicle-mcp",
         version=__version__,
         instructions=INSTRUCTIONS,
     )
-    tools = VehicleTools(client)
+    tools = VehicleTools(source)
     for tool in (
         tools.list_sessions,
         tools.get_session_report,

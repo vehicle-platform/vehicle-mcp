@@ -77,6 +77,13 @@ If `vehicle-server` downsamples a window, `min` and `max` are still exact (min/m
 while `mean`, `std` and the percentiles are `null` with an `approximate_reason`; the server
 does not guess them from the reduced series.
 
+## Data sources
+
+The tools read through `HistorySource` (`src/vehicle_mcp/source.py`): `sessions()`,
+`report()` and `series()` in the vehicle-server response shapes. `VehicleServerClient` is the
+default implementation; another project can plug in its own source without touching the
+tools.
+
 ## Guarantees
 
 - **Read-only:** only GET requests; no writes, no UDS, no CAN, no vehicle-bus access.
@@ -85,7 +92,9 @@ does not guess them from the reduced series.
 - **No model math:** statistics are computed by this server. `std` is the population standard
   deviation and the percentiles use linear interpolation between the closest ranks.
 - **No position:** `vehicle-server` does not expose lat/lon/height yet (D-076 item 3), so there
-  is no position tool and position-looking series are dropped or rejected.
+  is no position tool and position-looking series are dropped or rejected (latitude/longitude
+  anywhere in the name; height/altitude only as the last word, so `derived.altitude_change`, a
+  barometric difference since key-on, stays).
 - **Token safety:** the token comes from the environment, never appears in tool results or
   errors, and failures are explanatory messages without stack traces.
 - **Privacy:** no real ride data in this repo; the tests use synthetic sessions only.

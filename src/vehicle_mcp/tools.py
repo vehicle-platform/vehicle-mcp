@@ -8,12 +8,12 @@ GET requests only and turns expected failures into ToolError messages.
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from typing import Any, Literal
-from urllib.parse import quote
 
 from mcp.server.mcpserver.exceptions import ToolError
 
-from .client import VehicleServerClient, VehicleServerError
+from .source import HistorySource, SourceError
 from .stats import STATS_MAX_POINTS, compute_stats
 
 MIN_SERIES_POINTS = 10
@@ -44,33 +44,23 @@ def _position_error(signal: str) -> ToolError:
     )
 
 
-def _session_path(session_id: str, suffix: str) -> str:
-    return f"/sessions/{quote(session_id, safe='')}{suffix}"
-
-
 class VehicleTools:
-    """Tool implementations bound to one VehicleServerClient."""
+    """Tool implementations bound to one HistorySource."""
 
-    def __init__(self, client: VehicleServerClient) -> None:
-        self._client = client
+    def __init__(self, source: HistorySource) -> None:
+        self._source = source
 
-    def _get_json(self, path: str, params: dict[str, Any] | None = None) -> Any:
+    def _call(self, fetch: Callable[[], Any]) -> Any:
         try:
-            return self._client.get_json(path, params)
-        except VehicleServerError as exc:
-            raise ToolError(str(exc)) from None
-
-    def _get_text(self, path: str, params: dict[str, Any] | None = None) -> str:
-        try:
-            return self._client.get_text(path, params)
-        except VehicleServerError as exc:
+            return fetch()
+        except SourceError as exc:
             raise ToolError(str(exc)) from None
 
     def _series_index(
         self, session_id: str
     ) -> tuple[dict[str, Any], list[dict[str, Any]], list[str]]:
-        payload = self._get_json(
-            _session_path(session_id, "/series"), {"max_points": MIN_SERIES_POINTS}
+        payload = self._call(
+            lambda: self._source.series(session_id, signals=None, max_points=MIN_SERIES_POINTS)
         )
         if not isinstance(payload, dict) or not isinstance(payload.get("series"), list):
             raise ToolError(
@@ -119,7 +109,7 @@ class VehicleTools:
 
     def list_sessions(self) -> dict[str, Any]:
         """List recorded sessions with their index metadata."""
-        payload = self._get_json("/sessions")
+        payload = self._call(self._source.sessions)
         if not isinstance(payload, list):
             raise ToolError("vehicle-server returned an unexpected sessions response")
         return {"sessions": payload}
@@ -128,10 +118,7 @@ class VehicleTools:
         self, session_id: str, format: Literal["json", "text"] = "json"
     ) -> dict[str, Any] | str:
         """Read one session report as structured JSON or as pre-rendered text."""
-        path = _session_path(session_id, "/report")
-        if format == "text":
-            return self._get_text(path, {"format": "text"})
-        return self._get_json(path)
+        return self._call(lambda: self._source.report(session_id, text=format == "text"))
 
     def list_series(self, session_id: str) -> dict[str, Any]:
         """List a session's series names, kinds, units and point counts (no samples)."""
@@ -174,16 +161,15 @@ class VehicleTools:
         unique = list(dict.fromkeys(signals))
         self._ensure_known(session_id, unique)
 
-        params: dict[str, Any] = {
-            "signals": ",".join(unique),
-            "max_points": min(max_points, MAX_SLICE_POINTS),
-        }
-        if start_ms is not None:
-            params["from_ms"] = start_ms
-        if end_ms is not None:
-            params["to_ms"] = end_ms
-
-        payload = self._get_json(_session_path(session_id, "/series"), params)
+        payload = self._call(
+            lambda: self._source.series(
+                session_id,
+                signals=unique,
+                max_points=min(max_points, MAX_SLICE_POINTS),
+                from_ms=start_ms,
+                to_ms=end_ms,
+            )
+        )
         if not isinstance(payload, dict) or not isinstance(payload.get("series"), list):
             raise ToolError(
                 "vehicle-server returned an unexpected series response "
@@ -202,13 +188,15 @@ class VehicleTools:
         self._check_window(start_ms, end_ms)
         self._ensure_known(session_id, [signal])
 
-        params: dict[str, Any] = {"signals": signal, "max_points": STATS_MAX_POINTS}
-        if start_ms is not None:
-            params["from_ms"] = start_ms
-        if end_ms is not None:
-            params["to_ms"] = end_ms
-
-        payload = self._get_json(_session_path(session_id, "/series"), params)
+        payload = self._call(
+            lambda: self._source.series(
+                session_id,
+                signals=[signal],
+                max_points=STATS_MAX_POINTS,
+                from_ms=start_ms,
+                to_ms=end_ms,
+            )
+        )
         return compute_stats(self._one_series(payload, signal))
 
     def compare_sessions(self, session_a: str, session_b: str, signal: str) -> dict[str, Any]:

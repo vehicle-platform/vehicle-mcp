@@ -7,10 +7,12 @@ to show to the model: no stack traces and never the bearer token.
 from __future__ import annotations
 
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
 from .config import Settings
+from .source import SourceError
 
 _MAX_DETAIL_CHARS = 300
 
@@ -22,7 +24,7 @@ _STATUS_HINTS = {
 }
 
 
-class VehicleServerError(RuntimeError):
+class VehicleServerError(SourceError):
     """A vehicle-server call failed; the message is safe to show to the model."""
 
 
@@ -39,8 +41,12 @@ def _detail(response: httpx.Response) -> str:
     return text[:_MAX_DETAIL_CHARS]
 
 
+def _session_path(session_id: str, suffix: str) -> str:
+    return f"/sessions/{quote(session_id, safe='')}{suffix}"
+
+
 class VehicleServerClient:
-    """Thin synchronous client; every method performs exactly one GET."""
+    """The vehicle-server HistorySource; every method performs exactly one GET."""
 
     def __init__(
         self,
@@ -99,3 +105,30 @@ class VehicleServerClient:
 
     def get_text(self, path: str, params: dict[str, Any] | None = None) -> str:
         return self._get(path, params).text
+
+    def sessions(self) -> Any:
+        return self.get_json("/sessions")
+
+    def report(self, session_id: str, *, text: bool = False) -> Any:
+        path = _session_path(session_id, "/report")
+        if text:
+            return self.get_text(path, {"format": "text"})
+        return self.get_json(path)
+
+    def series(
+        self,
+        session_id: str,
+        *,
+        signals: list[str] | None,
+        max_points: int,
+        from_ms: int | None = None,
+        to_ms: int | None = None,
+    ) -> Any:
+        params: dict[str, Any] = {"max_points": max_points}
+        if signals is not None:
+            params["signals"] = ",".join(signals)
+        if from_ms is not None:
+            params["from_ms"] = from_ms
+        if to_ms is not None:
+            params["to_ms"] = to_ms
+        return self.get_json(_session_path(session_id, "/series"), params)
