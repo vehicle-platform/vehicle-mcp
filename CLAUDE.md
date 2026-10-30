@@ -6,26 +6,34 @@
 
 An **independent open-source** Model Context Protocol server (Python). Exposes vehicle telemetry to LLMs as **read-only** tools. Runs on the Raspi 5, on the same machine as `vehicle-linux-node`, but is a separate repo. Purpose: so other DIY vehicle/motorcycle projects can use it too, and it serves as an org showcase.
 
-## Tools — fixed list, adding a new tool requires user approval
+## Tools — adding a tool requires user approval
 
-`get_live_snapshot`, `get_recent_stats(window_s)`, `get_event_log(n)`, `get_anomaly_status`, `get_maintenance_status`, `query_ride_history(date_range)`
+- **History (v0.1, D-092)**, over a `HistorySource` (`src/vehicle_mcp/source.py`; vehicle-server's HTTP API is the default, `client.py`): `list_sessions`, `get_session_report`, `list_series`, `get_timeseries_slice` (at most 2000 points per series, D-076), `compute_signal_stats` (min/max exact; mean/std/percentiles only when the window is not downsampled), `compare_sessions`.
+- **Planned (approved list, not built):** live tools once linux-node/Kuksa exists: `get_live_snapshot`, `get_recent_stats(window_s)`, `get_event_log(n)`, `get_anomaly_status`, `get_maintenance_status`; `query_ride_history(date_range)` over the history source; the D-084 fault-catalog matcher.
 
 ## Rules
 
-1. **Read-only.** No write or actuator tools. In Phase 2, only its own newly added peripheral actuators (lights, heating) may be added, behind an operator approval gate. NEVER extended to engine/ECU control.
-2. **The LLM does not do math:** tools return already-computed results, with units and explanations. Never return a raw series and let the LLM interpret it.
-3. **No raw GPS returned.** Location is only returned as a summary ("rural", "12 km from home"). Any special tool requiring coordinates is kept explicitly separate.
-4. **Vehicle-independent core:** the data source is an adapter interface (the Kuksa/VSS adapter is the default). Nothing specific to vehicle-platform leaks into the core. VSS paths are used, not CAN IDs.
-5. TLS + authentication are mandatory in the externally exposed "home demo" mode. The default listen address is localhost.
-6. README, docstrings, and code are in English (open source). The licensing decision is asked of the user before publishing.
+1. **Read-only.** No write or actuator tools; every source call is a read (the HTTP source issues GET only, tested). Phase 2 actuators are Q-027. NEVER extended to engine/ECU control.
+2. **The LLM does not do math (invariant 7):** tools return computed results with units. A raw slice (`get_timeseries_slice`) is context and display only (D-076 item 2 (c)); every statistic, distance or comparison comes from a tool.
+3. **Position (D-076, provisional, Q-035):** position may reach the LLM only through vehicle-mcp, from the user's own servers. vehicle-server does not serve it yet (D-076 item 3), so v0.1 hides position-looking series names. A position tool needs the user's approval.
+4. **Vehicle-independent core:** tools see only source interfaces (`HistorySource`; a live Kuksa/VSS source later), never URLs, CAN IDs or vehicle-platform internals. Series names, kinds and units come from the source, never hand-written (invariant 2).
+5. **Transport:** stdio only in v0.1. An externally exposed mode (streamable HTTP, an open D-077 item) needs TLS + authentication and listens on localhost by default. The bearer token never appears in a tool result, an error or a log.
+6. README, docstrings and code in English (open source). Licence: MIT (D-036). Runtime dependencies: `mcp` (MIT) and `httpx` (BSD-3) only; a new one needs the user's approval and a licence check (D-091).
 
 ## Dependencies
 
-At runtime, only VSS (Kuksa gRPC) and the vehicle-server API (`query_ride_history`). Depends on `vehicle-defs` only optionally, for VSS overlay/schema reference.
+At runtime the vehicle-server read API (`GET /sessions`, `/sessions/{id}/report`, `/sessions/{id}/series`) with `VEHICLE_SERVER_URL` and `VEHICLE_API_TOKEN` from the environment; later Kuksa (gRPC) for the live tools. No vehicle-defs submodule in v0.1: names and units come from the server, which takes them from defs; revisit with the D-084 matcher.
 
 ## Build
 
-`uv` + `ruff` + `pytest`, the official MCP Python SDK. Tests run against a fake data adapter.
+`uv` + `ruff` + `pytest`, the official MCP Python SDK (`mcp` 2.x, `MCPServer`). Tests run against a fake source (`httpx.MockTransport`, an in-memory `HistorySource`), synthetic data only.
+
+```bash
+uv sync
+uv run pytest
+uv run ruff check . && uv run ruff format --check .
+VEHICLE_API_TOKEN=... uv run vehicle-mcp   # stdio
+```
 
 ## Context
 
