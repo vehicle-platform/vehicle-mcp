@@ -20,9 +20,10 @@ MIN_SERIES_POINTS = 10
 MAX_SLICE_POINTS = 2_000
 DEFAULT_SLICE_POINTS = 500
 
-_POSITION_TOKENS = frozenset(
-    {"lat", "lon", "lng", "latitude", "longitude", "height", "alt", "altitude"}
-)
+# A horizontal component anywhere in the name; a vertical one only as the last token,
+# so a relative quantity such as derived.altitude_change (barometric, since key-on) stays.
+_HORIZONTAL_TOKENS = frozenset({"lat", "lon", "lng", "latitude", "longitude"})
+_VERTICAL_TOKENS = frozenset({"height", "alt", "altitude"})
 _CAMEL_BOUNDARY = re.compile(r"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])")
 _TOKEN_SPLIT = re.compile(r"[^a-z0-9]+")
 
@@ -30,7 +31,10 @@ _TOKEN_SPLIT = re.compile(r"[^a-z0-9]+")
 def is_position_name(name: str) -> bool:
     """True when a series name looks like a GPS position component."""
     normalized = _CAMEL_BOUNDARY.sub("_", name).lower()
-    return any(token in _POSITION_TOKENS for token in _TOKEN_SPLIT.split(normalized))
+    tokens = [token for token in _TOKEN_SPLIT.split(normalized) if token]
+    if any(token in _HORIZONTAL_TOKENS for token in tokens):
+        return True
+    return bool(tokens) and tokens[-1] in _VERTICAL_TOKENS
 
 
 def _position_error(signal: str) -> ToolError:

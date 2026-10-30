@@ -309,6 +309,7 @@ def test_tool_results_never_contain_the_token(tools: VehicleTools) -> None:
         "GPSLongitude",
         "did.ALTITUDE",
         "sensor.alt",
+        "sensor.gps_height",
     ],
 )
 def test_is_position_name_matches_position_components(name: str) -> None:
@@ -324,6 +325,8 @@ def test_is_position_name_matches_position_components(name: str) -> None:
         "did.PLATE",
         "sensor.velocity",
         "did.ALTIMETER_OK",
+        "derived.altitude_change",
+        "derived.road_grade",
     ],
 )
 def test_is_position_name_ignores_other_names(name: str) -> None:
