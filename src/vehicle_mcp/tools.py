@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import re
 import statistics
+from collections import Counter
 from collections.abc import Callable
 from datetime import UTC, date, datetime, time
 from typing import Any, Literal
@@ -46,47 +47,43 @@ def _position_error(signal: str) -> ToolError:
     )
 
 
+def _as_utc(parsed: datetime) -> datetime:
+    """A timestamp without an offset is taken as UTC."""
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
+
+
 def _parse_bound(value: str, *, end: bool) -> datetime:
-    """Parse an ISO 8601 date or timestamp; date-only bounds cover the whole UTC day."""
+    """Parse an ISO 8601 date or timestamp; a date-only bound covers the whole UTC day."""
     text = value.strip()
     try:
         day = date.fromisoformat(text)
     except ValueError:
-        day = None
-    if day is not None:
+        pass
+    else:
         return datetime.combine(day, time.max if end else time.min, tzinfo=UTC)
 
     try:
-        parsed = datetime.fromisoformat(text)
+        return _as_utc(datetime.fromisoformat(text))
     except ValueError:
-        raise ToolError(
-            f"{'end_date' if end else 'start_date'} must be an ISO 8601 date or timestamp"
-        ) from None
-    if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=UTC)
-    return parsed.astimezone(UTC)
+        name = "end_date" if end else "start_date"
+        raise ToolError(f"{name} must be an ISO 8601 date or timestamp") from None
 
 
 def _parse_created(value: Any) -> datetime | None:
-    if not isinstance(value, str) or not value.strip():
+    if not isinstance(value, str):
         return None
     try:
-        parsed = datetime.fromisoformat(value.strip())
+        return _as_utc(datetime.fromisoformat(value.strip()))
     except ValueError:
         return None
-    if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=UTC)
-    return parsed.astimezone(UTC)
 
 
-def _as_float(value: Any) -> float | None:
+def _number(value: Any) -> int | float | None:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
-    return float(value)
-
-
-def _status_key(value: Any) -> str:
-    return value if isinstance(value, str) and value else "unknown"
+    return value
 
 
 class VehicleTools:
@@ -273,10 +270,12 @@ class VehicleTools:
         }
 
     def query_ride_history(self, start_date: str, end_date: str) -> dict[str, Any]:
-        """Summarise sessions whose created_utc is inside the inclusive date range.
+        """Summarise the sessions whose created_utc is inside an inclusive date range.
 
-        Date-only bounds cover the whole UTC day. Sessions with a missing or
-        unparseable created_utc are returned under `undated`, outside the summary.
+        Each bound is an ISO 8601 date (the whole UTC day) or a timestamp (without an
+        offset it is UTC). mean_loss_percent is the unweighted mean of the per-session
+        loss_percent values. Sessions without a parseable created_utc are listed under
+        `undated`, whatever the range, and are not summarised.
         """
         start = _parse_bound(start_date, end=False)
         end = _parse_bound(end_date, end=True)
@@ -295,33 +294,25 @@ class VehicleTools:
             )
             if created is None:
                 undated.append(session)
-            else:
+            elif start <= created <= end:
                 dated.append((created, session))
+        dated.sort(key=lambda item: item[0])
+        sessions = [session for _, session in dated]
 
-        in_range = sorted(
-            (item for item in dated if start <= item[0] <= end),
-            key=lambda item: item[0],
-        )
-        sessions = [session for _, session in in_range]
-        losses = [
-            loss
+        packets = [_number(session.get("packet_count")) for session in sessions]
+        losses = [_number(session.get("loss_percent")) for session in sessions]
+        known_losses = [loss for loss in losses if loss is not None]
+        statuses = Counter(
+            status if isinstance(status := session.get("status"), str) and status else "unknown"
             for session in sessions
-            if (loss := _as_float(session.get("loss_percent"))) is not None
-        ]
-        histogram: dict[str, int] = {}
-        for session in sessions:
-            key = _status_key(session.get("status"))
-            histogram[key] = histogram.get(key, 0) + 1
-
+        )
         return {
-            "start_date": start_date,
-            "end_date": end_date,
+            "start_utc": start.isoformat(),
+            "end_utc": end.isoformat(),
             "count": len(sessions),
-            "total_packet_count": int(
-                sum(_as_float(session.get("packet_count")) or 0.0 for session in sessions)
-            ),
-            "mean_loss_percent": statistics.fmean(losses) if losses else None,
-            "status_histogram": dict(sorted(histogram.items())),
+            "total_packet_count": sum(count for count in packets if count is not None),
+            "mean_loss_percent": statistics.fmean(known_losses) if known_losses else None,
+            "status_histogram": dict(sorted(statuses.items())),
             "sessions": sessions,
             "undated": undated,
         }

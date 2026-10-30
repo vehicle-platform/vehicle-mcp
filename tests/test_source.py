@@ -61,14 +61,14 @@ def test_query_ride_history_runs_on_any_history_source() -> None:
                 "created_utc": "2026-10-01T10:00:00Z",
                 "packet_count": 10,
                 "loss_percent": 0.5,
-                "status": "complete",
+                "status": "ok",
             },
             {
                 "session_id": "b",
                 "created_utc": "2026-10-02T10:00:00Z",
                 "packet_count": 20,
                 "loss_percent": 1.5,
-                "status": "failed",
+                "status": "fail",
             },
         ]
     )

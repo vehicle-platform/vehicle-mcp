@@ -74,8 +74,11 @@ Every tool is read-only and issues GET requests only.
 | `compare_sessions` | `session_a`, `session_b`, `signal` | Stats for both sessions plus the `b - a` delta for each non-null field |
 | `query_ride_history` | `start_date`, `end_date` (ISO 8601 date or timestamp) | Sessions inside the inclusive range sorted by `created_utc`, with `count`, `total_packet_count`, `mean_loss_percent` and a status histogram; sessions with a missing or unparseable `created_utc` are returned under `undated` |
 
-A date-only bound covers the whole UTC day; a full timestamp is an exact instant. Sessions whose
-`created_utc` is missing or unparseable are listed under `undated` and excluded from the summary.
+A date-only bound covers the whole UTC day; a full timestamp is an exact instant, and one without an
+offset is taken as UTC. The result echoes the bounds it used as `start_utc` and `end_utc`.
+`mean_loss_percent` is the unweighted mean of the per-session `loss_percent` values (`null` when
+none is numeric). Sessions whose `created_utc` is missing or unparseable are listed under `undated`
+whatever the range, and are excluded from the summary.
 
 If `vehicle-server` downsamples a window, `min` and `max` are still exact (min/max bucketing)
 while `mean`, `std` and the percentiles are `null` with an `approximate_reason`; the server

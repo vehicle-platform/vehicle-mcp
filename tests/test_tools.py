@@ -232,7 +232,9 @@ def test_query_ride_history_filters_inclusive_range_and_sorts(ride_tools: Vehicl
     assert result["count"] == 3
     assert result["total_packet_count"] == 700
     assert result["mean_loss_percent"] == pytest.approx((0.1 + 0.2 + 0.4) / 3)
-    assert result["status_histogram"] == {"complete": 2, "failed": 1}
+    assert result["status_histogram"] == {"fail": 1, "ok": 2}
+    assert result["start_utc"] == "2026-10-01T00:00:00+00:00"
+    assert result["end_utc"] == "2026-10-02T23:59:59.999999+00:00"
 
 
 def test_query_ride_history_date_only_bounds_cover_the_whole_day(
@@ -248,6 +250,12 @@ def test_query_ride_history_date_only_bounds_cover_the_whole_day(
 def test_query_ride_history_timestamp_bounds_are_exact(ride_tools: VehicleTools) -> None:
     result = ride_tools.query_ride_history("2026-10-01T10:00:00Z", "2026-10-02T11:59:59Z")
     assert [session["session_id"] for session in result["sessions"]] == ["ride-middle"]
+
+
+def test_query_ride_history_takes_a_bound_without_offset_as_utc(ride_tools: VehicleTools) -> None:
+    result = ride_tools.query_ride_history("2026-10-01T20:00:00", "2026-10-01T20:00:00")
+    assert [session["session_id"] for session in result["sessions"]] == ["ride-middle"]
+    assert result["start_utc"] == "2026-10-01T20:00:00+00:00"
 
 
 def test_query_ride_history_reports_undated_sessions(ride_tools: VehicleTools) -> None:
