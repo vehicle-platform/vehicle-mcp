@@ -88,6 +88,57 @@ SERIES_BY_SESSION: dict[str, list[dict[str, Any]]] = {
     "clean": [ENGINE_SPEED],
 }
 
+RIDE_SESSIONS: list[dict[str, Any]] = [
+    {
+        "session_id": "ride-early",
+        "created_utc": "2026-10-01T09:00:00Z",
+        "packet_count": 100,
+        "loss_percent": 0.1,
+        "status": "ok",
+    },
+    {
+        "session_id": "ride-middle",
+        "created_utc": "2026-10-01T22:00:00+02:00",
+        "packet_count": 200,
+        "loss_percent": 0.2,
+        "status": "ok",
+    },
+    {
+        "session_id": "ride-failed",
+        "created_utc": "2026-10-02T12:00:00Z",
+        "packet_count": 400,
+        "loss_percent": 0.4,
+        "status": "fail",
+    },
+    {
+        "session_id": "ride-late",
+        "created_utc": "2026-10-03T09:00:00Z",
+        "packet_count": 300,
+        "loss_percent": 0.3,
+        "status": "ok",
+    },
+    {
+        "session_id": "ride-september",
+        "created_utc": "2026-09-30T23:59:59Z",
+        "packet_count": 999,
+        "loss_percent": 0.9,
+        "status": "warn",
+    },
+    {
+        "session_id": "ride-undated",
+        "packet_count": 50,
+        "loss_percent": 0.0,
+        "status": "warn",
+    },
+    {
+        "session_id": "ride-bad-date",
+        "created_utc": "not-a-date",
+        "packet_count": 25,
+        "loss_percent": 0.2,
+        "status": "ok",
+    },
+]
+
 SESSION_INDEX: list[dict[str, Any]] = [
     {
         "session_id": "s1",
@@ -98,7 +149,7 @@ SESSION_INDEX: list[dict[str, Any]] = [
         "ble_schema_version": "1",
         "packet_count": 1200,
         "loss_percent": 0.0,
-        "status": "complete",
+        "status": "ok",
         "has_imu": True,
         "defs_version": "0.19.1",
         "has_gps": True,
@@ -114,7 +165,7 @@ SESSION_INDEX: list[dict[str, Any]] = [
         "ble_schema_version": "1",
         "packet_count": 1300,
         "loss_percent": 0.1,
-        "status": "complete",
+        "status": "ok",
         "has_imu": True,
         "defs_version": "0.19.1",
         "has_gps": True,
@@ -143,8 +194,9 @@ DETAILS = {
 class FakeVehicleServer:
     """A routed httpx.MockTransport handler with recorded requests."""
 
-    def __init__(self) -> None:
+    def __init__(self, sessions: list[dict[str, Any]] | None = None) -> None:
         self.requests: list[httpx.Request] = []
+        self.sessions = sessions if sessions is not None else SESSION_INDEX
 
     def handler(self, request: httpx.Request) -> httpx.Response:
         assert request.method == "GET", f"unexpected {request.method} {request.url}"
@@ -152,7 +204,7 @@ class FakeVehicleServer:
 
         parts = [part for part in request.url.path.split("/") if part]
         if parts == ["sessions"]:
-            return httpx.Response(200, json=SESSION_INDEX)
+            return httpx.Response(200, json=self.sessions)
 
         if len(parts) == 3 and parts[0] == "sessions":
             session_id, leaf = parts[1], parts[2]
