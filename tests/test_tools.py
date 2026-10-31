@@ -154,18 +154,35 @@ def test_compute_signal_stats_hand_computed(tools: VehicleTools) -> None:
     assert stats["approximate_reason"] is None
 
 
-def test_compute_signal_stats_requests_server_max(
+def test_compute_signal_stats_requests_exact_stats_route(
     tools: VehicleTools, fake_server: FakeVehicleServer
 ) -> None:
     tools.compute_signal_stats("s1", "did.ENGINE_SPEED", start_ms=100, end_ms=300)
-    params = fake_server.requests[-1].url.params
-    assert params["max_points"] == "20000"
-    assert params["from_ms"] == "100"
-    assert params["to_ms"] == "300"
+    request = fake_server.requests[-1]
+    assert request.url.path == "/sessions/s1/stats"
+    params = request.url.params
+    assert params["signals"] == "did.ENGINE_SPEED"
+    assert params["start_ms"] == "100"
+    assert params["end_ms"] == "300"
+    assert "max_points" not in params
 
 
-def test_compute_signal_stats_downsampled_keeps_exact_extremes(tools: VehicleTools) -> None:
+def test_compute_signal_stats_uses_exact_stats_without_approximation(tools: VehicleTools) -> None:
     stats = tools.compute_signal_stats("down", "did.DOWNSAMPLED")
+    assert stats["count"] == 10_000
+    assert stats["min"] == 1
+    assert stats["max"] == 9
+    assert stats["mean"] == pytest.approx(5.0)
+    assert stats["std"] == pytest.approx(4.0)
+    assert stats["p05"] == pytest.approx(1.4)
+    assert stats["p50"] == pytest.approx(5.0)
+    assert stats["p95"] == pytest.approx(8.6)
+    assert stats["duration_ms"] == 1000
+    assert stats["approximate_reason"] is None
+
+
+def test_compute_signal_stats_falls_back_for_old_server(old_tools: VehicleTools) -> None:
+    stats = old_tools.compute_signal_stats("down", "did.DOWNSAMPLED")
     assert stats["count"] == 10_000
     assert stats["min"] == 1
     assert stats["max"] == 9
@@ -204,12 +221,22 @@ def test_compare_sessions_reports_b_minus_a_deltas(tools: VehicleTools) -> None:
     assert result["delta"]["duration_ms"] == 0
 
 
-def test_compare_sessions_omits_approximate_fields(tools: VehicleTools) -> None:
+def test_compare_sessions_uses_exact_stats(tools: VehicleTools) -> None:
     result = tools.compare_sessions("down", "down", "did.DOWNSAMPLED")
+    assert result["delta"]["min"] == 0
+    assert result["delta"]["max"] == 0
+    assert result["delta"]["mean"] == pytest.approx(0.0)
+    assert result["session_a"]["mean"] == pytest.approx(5.0)
+    assert result["session_a"]["approximate_reason"] is None
+
+
+def test_compare_sessions_falls_back_for_old_server(old_tools: VehicleTools) -> None:
+    result = old_tools.compare_sessions("down", "down", "did.DOWNSAMPLED")
     assert result["delta"]["min"] == 0
     assert result["delta"]["max"] == 0
     assert "mean" not in result["delta"]
     assert result["session_a"]["mean"] is None
+    assert "downsampled" in result["session_a"]["approximate_reason"]
 
 
 def test_compare_sessions_rejects_unit_mismatch(tools: VehicleTools) -> None:

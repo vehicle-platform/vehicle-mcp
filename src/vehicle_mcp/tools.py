@@ -16,7 +16,7 @@ from typing import Any, Literal
 
 from mcp.server.mcpserver.exceptions import ToolError
 
-from .source import HistorySource, SourceError
+from .source import HistorySource, SourceError, StatsRouteUnavailable
 from .stats import STATS_MAX_POINTS, compute_stats
 
 MIN_SERIES_POINTS = 10
@@ -219,6 +219,48 @@ class VehicleTools:
             )
         return payload
 
+    def _series_stats(
+        self,
+        session_id: str,
+        signal: str,
+        start_ms: int | None,
+        end_ms: int | None,
+    ) -> dict[str, Any]:
+        """The pre-SV-2 path: compute statistics from the (possibly downsampled) series."""
+        payload = self._call(
+            lambda: self._source.series(
+                session_id,
+                signals=[signal],
+                max_points=STATS_MAX_POINTS,
+                from_ms=start_ms,
+                to_ms=end_ms,
+            )
+        )
+        return compute_stats(self._one_series(payload, signal))
+
+    def _stats_from_server(self, payload: Any, signal: str) -> dict[str, Any]:
+        entry = self._one_series(payload, signal)
+        first = entry.get("t_first_ms")
+        last = entry.get("t_last_ms")
+        duration = (
+            last - first
+            if isinstance(first, (int, float)) and isinstance(last, (int, float))
+            else 0
+        )
+        return {
+            "count": entry.get("count", 0),
+            "min": entry.get("min"),
+            "max": entry.get("max"),
+            "mean": entry.get("mean"),
+            "std": entry.get("std"),
+            "p05": entry.get("p05"),
+            "p50": entry.get("p50"),
+            "p95": entry.get("p95"),
+            "duration_ms": duration,
+            "unit": entry.get("unit"),
+            "approximate_reason": None,
+        }
+
     def compute_signal_stats(
         self,
         session_id: str,
@@ -230,16 +272,15 @@ class VehicleTools:
         self._check_window(start_ms, end_ms)
         self._ensure_known(session_id, [signal])
 
-        payload = self._call(
-            lambda: self._source.series(
-                session_id,
-                signals=[signal],
-                max_points=STATS_MAX_POINTS,
-                from_ms=start_ms,
-                to_ms=end_ms,
+        try:
+            payload = self._source.stats(
+                session_id, signals=[signal], start_ms=start_ms, end_ms=end_ms
             )
-        )
-        return compute_stats(self._one_series(payload, signal))
+        except StatsRouteUnavailable:
+            return self._series_stats(session_id, signal, start_ms, end_ms)
+        except SourceError as exc:
+            raise ToolError(str(exc)) from None
+        return self._stats_from_server(payload, signal)
 
     def compare_sessions(self, session_a: str, session_b: str, signal: str) -> dict[str, Any]:
         """Compare one signal across two sessions and report the b - a deltas.

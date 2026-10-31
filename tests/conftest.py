@@ -33,3 +33,19 @@ def tools(client: VehicleServerClient) -> VehicleTools:
 def ride_tools(client: VehicleServerClient, fake_server: FakeVehicleServer) -> VehicleTools:
     fake_server.sessions = RIDE_SESSIONS
     return VehicleTools(client)
+
+
+@pytest.fixture
+def old_server() -> FakeVehicleServer:
+    """A pre-SV-2 server: /series works, /stats is a route-level 404."""
+    return FakeVehicleServer(supports_stats=False)
+
+
+@pytest.fixture
+def old_tools(old_server: FakeVehicleServer) -> VehicleTools:
+    client = VehicleServerClient(
+        Settings(server_url="http://server.test", api_token=TOKEN),
+        transport=httpx.MockTransport(old_server.handler),
+    )
+    yield VehicleTools(client)
+    client.close()

@@ -6,6 +6,8 @@ from typing import Any
 
 import httpx
 
+from vehicle_mcp.stats import compute_stats
+
 TOKEN = "test-token"
 
 ENGINE_SPEED: dict[str, Any] = {
@@ -194,9 +196,15 @@ DETAILS = {
 class FakeVehicleServer:
     """A routed httpx.MockTransport handler with recorded requests."""
 
-    def __init__(self, sessions: list[dict[str, Any]] | None = None) -> None:
+    def __init__(
+        self,
+        sessions: list[dict[str, Any]] | None = None,
+        *,
+        supports_stats: bool = True,
+    ) -> None:
         self.requests: list[httpx.Request] = []
         self.sessions = sessions if sessions is not None else SESSION_INDEX
+        self.supports_stats = supports_stats
 
     def handler(self, request: httpx.Request) -> httpx.Response:
         assert request.method == "GET", f"unexpected {request.method} {request.url}"
@@ -217,6 +225,10 @@ class FakeVehicleServer:
                 return self._report(request, session_id)
             if leaf == "series":
                 return self._series(request, session_id)
+            if leaf == "stats":
+                if not self.supports_stats:
+                    return httpx.Response(404, json={"detail": "Not Found"})
+                return self._stats(request, session_id)
         return httpx.Response(404, json={"detail": f"unknown path: {request.url.path}"})
 
     def _report(self, request: httpx.Request, session_id: str) -> httpx.Response:
@@ -228,6 +240,58 @@ class FakeVehicleServer:
                 "session_id": session_id,
                 "summary": {"packet_count": 1200, "loss_percent": 0.0},
                 "notes": ["synthetic test data"],
+            },
+        )
+
+    def _stats(self, request: httpx.Request, session_id: str) -> httpx.Response:
+        params = request.url.params
+        available = SERIES_BY_SESSION[session_id]
+        by_name = {entry["name"]: entry for entry in available}
+
+        requested = params.get("signals")
+        if requested is None:
+            entries = available
+        else:
+            names = requested.split(",")
+            unknown = [name for name in names if name not in by_name]
+            if unknown:
+                return httpx.Response(
+                    404,
+                    json={"detail": f"unknown or unavailable series: {', '.join(unknown)}"},
+                )
+            entries = [by_name[name] for name in names]
+
+        series = []
+        for entry in entries:
+            summary = compute_stats({**entry, "downsampled": False})
+            if entry.get("downsampled"):
+                summary["count"] = entry.get("points_total", summary["count"])
+            times = entry["t_ms"]
+            series.append(
+                {
+                    "name": entry["name"],
+                    "kind": entry["kind"],
+                    "unit": entry["unit"],
+                    "count": summary["count"],
+                    "mean": summary["mean"],
+                    "std": summary["std"],
+                    "min": summary["min"],
+                    "max": summary["max"],
+                    "p05": summary["p05"],
+                    "p50": summary["p50"],
+                    "p95": summary["p95"],
+                    "t_first_ms": min(times) if times else None,
+                    "t_last_ms": max(times) if times else None,
+                }
+            )
+        return httpx.Response(
+            200,
+            json={
+                "session_id": session_id,
+                "t0_device_ms": 0,
+                "start_ms": params.get("start_ms"),
+                "end_ms": params.get("end_ms"),
+                "series": series,
             },
         )
 
