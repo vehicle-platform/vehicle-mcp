@@ -8,7 +8,7 @@ An **independent open-source** Model Context Protocol server (Python). Exposes v
 
 ## Tools — adding a tool requires user approval
 
-- **History (v0.1, D-092)**, over a `HistorySource` (`src/vehicle_mcp/source.py`; vehicle-server's HTTP API is the default, `client.py`): `list_sessions`, `get_session_report`, `list_series`, `get_timeseries_slice` (at most 2000 points per series, D-076), `compute_signal_stats` (min/max exact; mean/std/percentiles only when the window is not downsampled), `compare_sessions`, `query_ride_history(start_date, end_date)` (D-092 item 2).
+- **History (v0.1, D-092)**, over a `HistorySource` (`src/vehicle_mcp/source.py`; vehicle-server's HTTP API is the default, `client.py`): `list_sessions`, `get_session_report`, `list_series`, `get_timeseries_slice` (at most 2000 points per series, D-076), `compute_signal_stats` (exact, from the server's `/stats`; with an older server it falls back to `/series`: min/max exact, mean/std/percentiles only when the window is not downsampled), `compare_sessions`, `query_ride_history(start_date, end_date)` (D-092 item 2).
 - **Planned (approved list, not built):** live tools once linux-node/Kuksa exists: `get_live_snapshot`, `get_recent_stats(window_s)`, `get_event_log(n)`, `get_anomaly_status`, `get_maintenance_status`; the D-084 fault-catalog matcher.
 
 ## Rules
@@ -22,7 +22,7 @@ An **independent open-source** Model Context Protocol server (Python). Exposes v
 
 ## Dependencies
 
-At runtime the vehicle-server read API (`GET /sessions`, `/sessions/{id}/report`, `/sessions/{id}/series`) with `VEHICLE_SERVER_URL` and `VEHICLE_API_TOKEN` from the environment; later Kuksa (gRPC) for the live tools. No vehicle-defs submodule in v0.1: names and units come from the server, which takes them from defs; revisit with the D-084 matcher.
+At runtime the vehicle-server read API (`GET /sessions`, `/sessions/{id}/report`, `/sessions/{id}/series`, `/sessions/{id}/stats`) with `VEHICLE_SERVER_URL` and `VEHICLE_API_TOKEN` from the environment; later Kuksa (gRPC) for the live tools. No vehicle-defs submodule in v0.1: names and units come from the server, which takes them from defs; revisit with the D-084 matcher.
 
 ## Build
 

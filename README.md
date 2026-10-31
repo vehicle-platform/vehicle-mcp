@@ -80,16 +80,21 @@ offset is taken as UTC. The result echoes the bounds it used as `start_utc` and 
 none is numeric). Sessions whose `created_utc` is missing or unparseable are listed under `undated`
 whatever the range, and are excluded from the summary.
 
-If `vehicle-server` downsamples a window, `min` and `max` are still exact (min/max bucketing)
-while `mean`, `std` and the percentiles are `null` with an `approximate_reason`; the server
-does not guess them from the reduced series.
+`compute_signal_stats` and `compare_sessions` ask `vehicle-server` for exact statistics
+(`GET /sessions/{id}/stats`) and do not need the full series. With an older server that lacks
+that route, they fall back to `GET /sessions/{id}/series`; if that window was downsampled,
+`min` and `max` are still exact (min/max bucketing) while `mean`, `std` and the percentiles are
+`null` with an `approximate_reason`; the server does not guess them from the reduced series.
+Statistics always come from the server or this tool, never from the model.
 
 ## Data sources
 
 The tools read through `HistorySource` (`src/vehicle_mcp/source.py`): `sessions()`,
-`report()` and `series()` in the vehicle-server response shapes. `VehicleServerClient` is the
-default implementation; another project can plug in its own source without touching the
-tools.
+`report()`, `series()` and `stats()` in the vehicle-server response shapes. `stats()` returns
+the exact full-resolution count, mean, standard deviation, min/max, p05/p50/p95 and first/last
+timestamps; the tools fall back to `series()` only when the server has no `/stats` route.
+`VehicleServerClient` is the default implementation; another project can plug in its own source
+without touching the tools.
 
 ## Guarantees
 

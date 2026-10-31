@@ -1,8 +1,10 @@
 """Statistics over a series returned by vehicle-server.
 
-vehicle-server downsamples long windows with min/max bucketing. In that case the
-returned extremes are still exact, but mean, standard deviation and percentiles
-would be wrong, so they are reported as null with a reason instead of guessed.
+`compute_signal_stats` prefers the exact `/stats` route. This module computes
+statistics from `/series` when an older server lacks that route. vehicle-server
+downsamples long windows with min/max bucketing; in that case the returned
+extremes are still exact, but mean, standard deviation and percentiles would be
+wrong, so they are reported as null with a reason instead of guessed.
 """
 
 from __future__ import annotations

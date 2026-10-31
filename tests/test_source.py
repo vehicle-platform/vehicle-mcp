@@ -5,6 +5,7 @@ from typing import Any
 import pytest
 
 from vehicle_mcp.source import HistorySource
+from vehicle_mcp.stats import compute_stats
 from vehicle_mcp.tools import VehicleTools
 
 SERIES = {
@@ -40,6 +41,32 @@ class InMemorySource:
         to_ms: int | None = None,
     ) -> Any:
         return {"session_id": session_id, "series": [SERIES]}
+
+    def stats(
+        self,
+        session_id: str,
+        *,
+        signals: list[str] | None,
+        start_ms: int | None = None,
+        end_ms: int | None = None,
+    ) -> Any:
+        summary = compute_stats(SERIES)
+        entry = {
+            "name": SERIES["name"],
+            "kind": SERIES["kind"],
+            "unit": SERIES["unit"],
+            "count": summary["count"],
+            "mean": summary["mean"],
+            "std": summary["std"],
+            "min": summary["min"],
+            "max": summary["max"],
+            "p05": summary["p05"],
+            "p50": summary["p50"],
+            "p95": summary["p95"],
+            "t_first_ms": SERIES["t_ms"][0],
+            "t_last_ms": SERIES["t_ms"][-1],
+        }
+        return {"session_id": session_id, "series": [entry]}
 
 
 def test_tools_run_on_any_history_source() -> None:
