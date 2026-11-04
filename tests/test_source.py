@@ -2,9 +2,18 @@ from __future__ import annotations
 
 from typing import Any
 
+import httpx
 import pytest
 
-from vehicle_mcp.source import HistorySource
+from tests.support import TOKEN, FakeVehicleServer
+from vehicle_mcp.client import VehicleServerClient, VehicleServerError
+from vehicle_mcp.config import Settings
+from vehicle_mcp.source import (
+    HistorySource,
+    NoRideSummary,
+    RidesRouteUnavailable,
+    SourceError,
+)
 from vehicle_mcp.stats import compute_stats
 from vehicle_mcp.tools import VehicleTools
 
@@ -68,6 +77,18 @@ class InMemorySource:
         }
         return {"session_id": session_id, "series": [entry]}
 
+    def ride_summary(self, session_id: str) -> Any:
+        return {"session_id": session_id, "signals": []}
+
+    def rides(
+        self,
+        *,
+        start: str | None,
+        end: str | None,
+        signals: list[str] | None,
+    ) -> Any:
+        return {"columns": [], "rows": [], "skipped": 0}
+
 
 def test_tools_run_on_any_history_source() -> None:
     source: HistorySource = InMemorySource()
@@ -104,3 +125,102 @@ def test_query_ride_history_runs_on_any_history_source() -> None:
     assert result["count"] == 1
     assert result["total_packet_count"] == 10
     assert result["mean_loss_percent"] == pytest.approx(0.5)
+
+
+def test_query_ride_history_joins_ride_scalars_on_any_source() -> None:
+    source: HistorySource = InMemorySource(
+        [
+            {
+                "session_id": "a",
+                "created_utc": "2026-10-01T10:00:00Z",
+                "packet_count": 10,
+                "loss_percent": 0.5,
+                "status": "ok",
+            }
+        ]
+    )
+    result = VehicleTools(source).query_ride_history("2026-10-01", "2026-10-01")
+    assert result["skipped"] == 0
+    assert result["sessions"][0]["ride"] is None
+
+
+def test_ride_summary_uses_the_summary_route(
+    client: VehicleServerClient, fake_server: FakeVehicleServer
+) -> None:
+    payload = client.ride_summary("s1")
+    assert payload["session_id"] == "s1"
+    request = fake_server.requests[-1]
+    assert request.method == "GET"
+    assert request.url.path == "/sessions/s1/summary"
+    assert not request.url.params
+
+
+def test_rides_passes_the_same_bounds_and_signal_names(
+    client: VehicleServerClient, fake_server: FakeVehicleServer
+) -> None:
+    payload = client.rides(
+        start="2026-10-01T20:00:00",
+        end="2026-10-02",
+        signals=["ride_distance", "ride_time"],
+    )
+    assert payload["skipped"] == 1
+    request = fake_server.requests[-1]
+    assert request.method == "GET"
+    assert request.url.path == "/rides"
+    assert request.url.params["from"] == "2026-10-01T20:00:00"
+    assert request.url.params["to"] == "2026-10-02"
+    assert request.url.params["names"] == "ride_distance,ride_time"
+
+
+def test_ride_summary_distinguishes_unknown_session_from_no_summary(
+    client: VehicleServerClient,
+) -> None:
+    with pytest.raises(VehicleServerError, match="unknown session"):
+        client.ride_summary("nope")
+    with pytest.raises(NoRideSummary, match="no ride summary"):
+        client.ride_summary("clean")
+
+
+def test_rides_missing_route_is_detected() -> None:
+    fake = FakeVehicleServer(supports_rides=False)
+    client = VehicleServerClient(
+        Settings(server_url="http://server.test", api_token=TOKEN),
+        transport=httpx.MockTransport(fake.handler),
+    )
+    try:
+        with pytest.raises(RidesRouteUnavailable, match="ride scalars route"):
+            client.rides(start=None, end=None, signals=None)
+    finally:
+        client.close()
+
+
+def test_ride_errors_never_contain_the_token() -> None:
+    fake = FakeVehicleServer(rides_error=(503, TOKEN))
+    client = VehicleServerClient(
+        Settings(server_url="http://server.test", api_token=TOKEN),
+        transport=httpx.MockTransport(fake.handler),
+    )
+    try:
+        with pytest.raises(SourceError) as excinfo:
+            client.rides(start=None, end=None, signals=None)
+    finally:
+        client.close()
+    assert TOKEN not in str(excinfo.value)
+    assert "***" in str(excinfo.value)
+
+
+def test_no_summary_error_never_contains_the_token() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(404, json={"detail": TOKEN})
+
+    client = VehicleServerClient(
+        Settings(server_url="http://server.test", api_token=TOKEN),
+        transport=httpx.MockTransport(handler),
+    )
+    try:
+        with pytest.raises(NoRideSummary) as excinfo:
+            client.ride_summary("s1")
+    finally:
+        client.close()
+    assert TOKEN not in str(excinfo.value)
+    assert "***" in str(excinfo.value)

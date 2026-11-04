@@ -12,7 +12,12 @@ from urllib.parse import quote
 import httpx
 
 from .config import Settings
-from .source import SourceError, StatsRouteUnavailable
+from .source import (
+    NoRideSummary,
+    RidesRouteUnavailable,
+    SourceError,
+    StatsRouteUnavailable,
+)
 
 _MAX_DETAIL_CHARS = 300
 
@@ -176,5 +181,48 @@ class VehicleServerClient:
             if exc.status_code == 404 and detail in {"", "not found", "not found."}:
                 raise StatsRouteUnavailable(
                     "vehicle-server does not expose the exact statistics route"
+                ) from None
+            raise
+
+    def ride_summary(self, session_id: str) -> Any:
+        try:
+            return self.get_json(_session_path(session_id, "/summary"))
+        except VehicleServerError as exc:
+            detail = (exc.detail or "").strip()
+            lowered = detail.lower()
+            if (
+                exc.status_code == 404
+                and lowered not in {"", "not found", "not found."}
+                and not lowered.startswith("unknown session")
+            ):
+                safe_detail = detail.replace(self._settings.api_token, "***")
+                raise NoRideSummary(
+                    safe_detail or "vehicle-server has no stored ride summary for this session"
+                ) from None
+            raise
+
+    def rides(
+        self,
+        *,
+        start: str | None,
+        end: str | None,
+        signals: list[str] | None,
+    ) -> Any:
+        params: dict[str, str] = {}
+        if start is not None:
+            params["from"] = start
+        if end is not None:
+            params["to"] = end
+        if signals is not None:
+            params["names"] = ",".join(signals)
+        try:
+            return self.get_json("/rides", params)
+        except VehicleServerError as exc:
+            # A missing route gets FastAPI's default 404 body ("Not Found"); the
+            # server's own 404s always carry a detail text.
+            detail = (exc.detail or "").strip().lower()
+            if exc.status_code == 404 and detail in {"", "not found", "not found."}:
+                raise RidesRouteUnavailable(
+                    "vehicle-server does not expose the ride scalars route"
                 ) from None
             raise

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import json
 
 import httpx
@@ -8,6 +9,7 @@ from mcp.server.mcpserver.exceptions import ToolError
 
 from tests.support import (
     ENGINE_SPEED,
+    RIDE_SESSIONS,
     TOKEN,
     FakeVehicleServer,
 )
@@ -61,6 +63,81 @@ def test_get_session_report_text(tools: VehicleTools, fake_server: FakeVehicleSe
     result = tools.get_session_report("s1", format="text")
     assert result.startswith("# Session s1")
     assert fake_server.requests[0].url.params["format"] == "text"
+
+
+def test_get_ride_summary_returns_stored_scalars_and_binned_cells(
+    tools: VehicleTools,
+) -> None:
+    result = tools.get_ride_summary("s1")
+    assert result["session_id"] == "s1"
+    assert result["ride_definition"] == "session"
+    by_name = {entry["name"]: entry for entry in result["signals"]}
+    assert by_name["ride_distance"]["value"] == 12.3
+    assert by_name["ride_distance"]["flag"] is None
+    assert by_name["ride_fuel_used"] == {
+        "name": "ride_fuel_used",
+        "status": "missing_inputs",
+        "missing": ["did.ENGINE_FUEL_RATE"],
+    }
+    binned = by_name["ride_coolant_time_at_temp"]
+    assert binned["kind"] == "binned"
+    assert binned["axes"][0]["edges"] == [[40.0, 60.0], [60.0, 80.0]]
+    assert binned["cells"][0] == {"index": 0, "axes": [0], "value": 1.0, "flag": None}
+    assert binned["cells"][1] == {"index": 1, "axes": [1], "value": None, "flag": None}
+    assert "warnings" not in result
+
+
+def test_get_ride_summary_warns_about_a_defs_mismatch(
+    tools: VehicleTools, fake_server: FakeVehicleServer
+) -> None:
+    entry = fake_server.summaries["s1"]["signals"][3]
+    entry["defs_mismatch"] = True
+    result = tools.get_ride_summary("s1")
+    binned = next(e for e in result["signals"] if e["name"] == "ride_coolant_time_at_temp")
+    assert binned["defs_mismatch"] is True
+    assert any("stored bin edges" in warning for warning in result["warnings"])
+
+
+def test_get_ride_summary_without_a_stored_summary_is_explanatory(
+    tools: VehicleTools,
+) -> None:
+    with pytest.raises(ToolError, match="no ride summary"):
+        tools.get_ride_summary("clean")
+
+
+def test_get_ride_summary_unknown_session_is_explanatory(tools: VehicleTools) -> None:
+    with pytest.raises(ToolError, match="unknown session"):
+        tools.get_ride_summary("nope")
+
+
+def test_get_ride_summary_drops_position_looking_names(
+    tools: VehicleTools, fake_server: FakeVehicleServer
+) -> None:
+    fake_server.summaries["position"] = {
+        "session_id": "position",
+        "ride_definition": "session",
+        "defs_version": "vtest",
+        "signals": [
+            {
+                "name": "sensor.gps_latitude",
+                "status": "computed",
+                "kind": "scalar",
+                "unit": "deg",
+                "value": 41.0,
+            },
+            {
+                "name": "ride_distance",
+                "status": "computed",
+                "kind": "scalar",
+                "unit": "km",
+                "value": 1.0,
+            },
+        ],
+    }
+    result = tools.get_ride_summary("position")
+    assert [entry["name"] for entry in result["signals"]] == ["ride_distance"]
+    assert result["dropped_position_names"] == ["sensor.gps_latitude"]
+    assert "D-076" in result["note"]
 
 
 def test_get_timeseries_slice_passes_window_and_caps_points(
@@ -322,6 +399,144 @@ def test_query_ride_history_rejects_invalid_date(
     assert fake_server.requests == []
 
 
+def test_query_ride_history_joins_ride_scalars_and_skipped_sessions(
+    ride_tools: VehicleTools,
+) -> None:
+    result = ride_tools.query_ride_history("2026-10-01", "2026-10-02")
+    by_id = {session["session_id"]: session for session in result["sessions"]}
+    early = by_id["ride-early"]
+    assert early["ride"]["values"] == {"ride_distance": 12.3, "ride_time": 90.0}
+    assert early["ride"]["flags"] == {"ride_distance": None, "ride_time": None}
+    assert early["ride"]["columns"] == [
+        {"name": "ride_distance", "unit": "km"},
+        {"name": "ride_time", "unit": "s"},
+    ]
+    middle = by_id["ride-middle"]
+    assert middle["ride"]["flags"]["ride_time"] == "missing_inputs"
+    failed = by_id["ride-failed"]
+    assert failed["ride"] is None
+    assert "no stored ride summary" in failed["ride_reason"]
+    assert result["skipped"] == 1
+
+
+def test_query_ride_history_hides_position_looking_ride_names(
+    ride_tools: VehicleTools, fake_server: FakeVehicleServer
+) -> None:
+    fake_server.rides_payload["columns"].append({"name": "sensor.gps_longitude", "unit": "deg"})
+    for row in fake_server.rides_payload["rows"]:
+        row["values"]["sensor.gps_longitude"] = 29.0
+        row["flags"]["sensor.gps_longitude"] = None
+    result = ride_tools.query_ride_history("2026-10-01", "2026-10-02")
+    assert result["dropped_position_names"] == ["sensor.gps_longitude"]
+    assert "GPS position" in result["note"]
+    for session in result["sessions"]:
+        ride = session.get("ride")
+        if ride is None:
+            continue
+        assert [column["name"] for column in ride["columns"]] == [
+            "ride_distance",
+            "ride_time",
+        ]
+        assert "sensor.gps_longitude" not in ride["values"]
+        assert "sensor.gps_longitude" not in ride["flags"]
+
+
+def test_query_ride_history_hides_a_position_key_without_a_column(
+    ride_tools: VehicleTools, fake_server: FakeVehicleServer
+) -> None:
+    for row in fake_server.rides_payload["rows"]:
+        row["flags"]["sensor.gps_latitude"] = "computed"
+    result = ride_tools.query_ride_history("2026-10-01", "2026-10-02")
+    assert result["dropped_position_names"] == ["sensor.gps_latitude"]
+    assert all(
+        "sensor.gps_latitude" not in session["ride"]["flags"]
+        for session in result["sessions"]
+        if session["ride"] is not None
+    )
+
+
+def test_query_ride_history_keeps_undated_sessions_without_ride(
+    ride_tools: VehicleTools,
+) -> None:
+    result = ride_tools.query_ride_history("2026-10-01", "2026-10-03")
+    assert [session["session_id"] for session in result["undated"]] == [
+        "ride-undated",
+        "ride-bad-date",
+    ]
+    assert all("ride" not in session for session in result["undated"])
+    assert all("ride" in session for session in result["sessions"])
+    assert "created_utc" in result["undated_ride_reason"]
+
+
+def test_query_ride_history_keeps_sessions_when_rides_route_is_missing() -> None:
+    fake = FakeVehicleServer(sessions=copy.deepcopy(RIDE_SESSIONS), supports_rides=False)
+    client = VehicleServerClient(
+        Settings(server_url="http://server.test", api_token=TOKEN),
+        transport=httpx.MockTransport(fake.handler),
+    )
+    try:
+        result = VehicleTools(client).query_ride_history("2026-10-01", "2026-10-02")
+    finally:
+        client.close()
+    assert result["ride_scalars"] == "unavailable"
+    assert "ride scalars route" in result["ride_scalars_reason"]
+    assert [session["session_id"] for session in result["sessions"]] == [
+        "ride-early",
+        "ride-middle",
+        "ride-failed",
+    ]
+    assert all("ride" not in session for session in result["sessions"])
+
+
+def test_query_ride_history_keeps_sessions_when_rides_errors() -> None:
+    fake = FakeVehicleServer(
+        sessions=copy.deepcopy(RIDE_SESSIONS),
+        rides_error=(503, "ride store unavailable"),
+    )
+    client = VehicleServerClient(
+        Settings(server_url="http://server.test", api_token=TOKEN),
+        transport=httpx.MockTransport(fake.handler),
+    )
+    try:
+        result = VehicleTools(client).query_ride_history("2026-10-01", "2026-10-02")
+    finally:
+        client.close()
+    assert result["ride_scalars"] == "unavailable"
+    assert "ride store unavailable" in result["ride_scalars_reason"]
+    assert result["count"] == 3
+
+
+@pytest.mark.parametrize(
+    ("start", "end", "start_utc", "end_utc"),
+    [
+        (
+            "2026-10-01",
+            "2026-10-02",
+            "2026-10-01T00:00:00+00:00",
+            "2026-10-02T23:59:59.999999+00:00",
+        ),
+        (
+            "2026-10-01T20:00:00",
+            "2026-10-01T20:00:00",
+            "2026-10-01T20:00:00+00:00",
+            "2026-10-01T20:00:00+00:00",
+        ),
+        (
+            "2026-10-01T22:00:00+02:00",
+            "2026-10-01T22:00:00+02:00",
+            "2026-10-01T20:00:00+00:00",
+            "2026-10-01T20:00:00+00:00",
+        ),
+    ],
+)
+def test_query_ride_history_bounds_are_utc_like_vehicle_server(
+    ride_tools: VehicleTools, start: str, end: str, start_utc: str, end_utc: str
+) -> None:
+    result = ride_tools.query_ride_history(start, end)
+    assert result["start_utc"] == start_utc
+    assert result["end_utc"] == end_utc
+
+
 @pytest.mark.parametrize(
     ("session_id", "status"),
     [
@@ -378,6 +593,7 @@ def test_every_request_is_an_authenticated_get(
     tools.compute_signal_stats("s1", "did.ENGINE_SPEED")
     tools.compare_sessions("s1", "s2", "did.ENGINE_SPEED")
     tools.query_ride_history("2026-10-01", "2026-10-02")
+    tools.get_ride_summary("s1")
 
     assert fake_server.requests
     for request in fake_server.requests:
@@ -396,6 +612,7 @@ def test_tool_results_never_contain_the_token(tools: VehicleTools) -> None:
         tools.compute_signal_stats("s1", "did.ENGINE_SPEED"),
         tools.compare_sessions("s1", "s2", "did.ENGINE_SPEED"),
         tools.query_ride_history("2026-10-01", "2026-10-02"),
+        tools.get_ride_summary("s1"),
     ]
     assert TOKEN not in json.dumps(results, default=str)
 

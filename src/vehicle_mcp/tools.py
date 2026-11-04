@@ -16,7 +16,11 @@ from typing import Any, Literal
 
 from mcp.server.mcpserver.exceptions import ToolError
 
-from .source import HistorySource, SourceError, StatsRouteUnavailable
+from .source import (
+    HistorySource,
+    SourceError,
+    StatsRouteUnavailable,
+)
 from .stats import STATS_MAX_POINTS, compute_stats
 
 MIN_SERIES_POINTS = 10
@@ -45,6 +49,37 @@ def _position_error(signal: str) -> ToolError:
         f"series {signal!r} looks like a GPS position; vehicle-server does not expose "
         "position yet (D-076 item 3 is not implemented), so vehicle-mcp has no position tool"
     )
+
+
+_RIDE_SUMMARY_WARNING = "stored bin edges differ from the current defs; values are as stored"
+_POSITION_NOTE = (
+    "position-looking names are hidden: vehicle-server does not expose GPS "
+    "position yet (D-076 item 3 is not implemented)"
+)
+
+
+def _summary_position_names(entry: dict[str, Any]) -> list[str]:
+    """Names in one summary entry that look like a GPS position component."""
+    names: list[str] = []
+    name = entry.get("name")
+    if isinstance(name, str) and is_position_name(name):
+        names.append(name)
+    axes = entry.get("axes")
+    if isinstance(axes, list):
+        for axis in axes:
+            input_name = axis.get("input") if isinstance(axis, dict) else None
+            if isinstance(input_name, str) and is_position_name(input_name):
+                names.append(input_name)
+    return names
+
+
+def _without_position_keys(mapping: Any) -> tuple[Any, list[str]]:
+    """A /rides `values` or `flags` mapping without position-looking keys, and those keys."""
+    if not isinstance(mapping, dict):
+        return mapping, []
+    dropped = [name for name in mapping if isinstance(name, str) and is_position_name(name)]
+    kept = {name: value for name, value in mapping.items() if name not in dropped}
+    return kept, dropped
 
 
 def _as_utc(parsed: datetime) -> datetime:
@@ -161,6 +196,50 @@ class VehicleTools:
     ) -> dict[str, Any] | str:
         """Read one session report as structured JSON or as pre-rendered text."""
         return self._call(lambda: self._source.report(session_id, text=format == "text"))
+
+    def get_ride_summary(self, session_id: str) -> dict[str, Any]:
+        """Read the stored class-B ride summary of one session.
+
+        One session is one ride. The scalars and binned signals are computed once by
+        vehicle-server from vehicle-defs definitions and returned here exactly as stored:
+        this tool never recomputes, rebins, converts or aggregates a value. A null value
+        carries the server's status/flag reason in the same entry. Binned signals keep
+        their server-provided axes and cells; `defs_mismatch` is passed through and adds
+        a warning when the stored bin edges differ from the current defs.
+        """
+        payload = self._call(lambda: self._source.ride_summary(session_id))
+        if not isinstance(payload, dict) or not isinstance(payload.get("signals"), list):
+            raise ToolError(
+                "vehicle-server returned an unexpected ride summary response "
+                "(expected an object with a 'signals' list)"
+            )
+
+        kept: list[dict[str, Any]] = []
+        dropped: list[str] = []
+        for entry in payload["signals"]:
+            if not isinstance(entry, dict) or not isinstance(entry.get("name"), str):
+                raise ToolError("vehicle-server returned a ride summary signal without a name")
+            position_names = _summary_position_names(entry)
+            if position_names:
+                dropped.extend(position_names)
+            else:
+                kept.append(entry)
+
+        result = dict(payload)
+        result["signals"] = kept
+        if dropped:
+            result["dropped_position_names"] = dropped
+            result["note"] = _POSITION_NOTE
+
+        defs_mismatch = payload.get("defs_mismatch") is True or any(
+            entry.get("defs_mismatch") is True for entry in kept
+        )
+        warnings = list(payload["warnings"]) if isinstance(payload.get("warnings"), list) else []
+        if defs_mismatch and _RIDE_SUMMARY_WARNING not in warnings:
+            warnings.append(_RIDE_SUMMARY_WARNING)
+        if warnings:
+            result["warnings"] = warnings
+        return result
 
     def list_series(self, session_id: str) -> dict[str, Any]:
         """List a session's series names, kinds, units and point counts (no samples)."""
@@ -310,6 +389,75 @@ class VehicleTools:
             "delta": delta,
         }
 
+    def _with_ride_scalars(
+        self,
+        result: dict[str, Any],
+        sessions: list[dict[str, Any]],
+        start_date: str,
+        end_date: str,
+    ) -> dict[str, Any]:
+        """Join the server's /rides scalars onto the listed dated sessions.
+
+        Any source error (a missing route included) keeps the session part, which is
+        still valid, and states why the ride scalars are unavailable.
+        """
+        try:
+            payload = self._source.rides(start=start_date, end=end_date, signals=None)
+        except SourceError as exc:  # RidesRouteUnavailable is one of them
+            result["ride_scalars"] = "unavailable"
+            result["ride_scalars_reason"] = str(exc)
+            return result
+
+        if (
+            not isinstance(payload, dict)
+            or not isinstance(payload.get("rows"), list)
+            or not isinstance(payload.get("columns"), list)
+        ):
+            result["ride_scalars"] = "unavailable"
+            result["ride_scalars_reason"] = (
+                "vehicle-server returned an unexpected ride-scalars response"
+            )
+            return result
+
+        rows_by_session = {
+            row["session_id"]: row
+            for row in payload["rows"]
+            if isinstance(row, dict) and isinstance(row.get("session_id"), str)
+        }
+        columns: list[Any] = []
+        dropped: list[str] = []
+        for column in payload["columns"]:
+            name = column.get("name") if isinstance(column, dict) else None
+            if isinstance(name, str) and is_position_name(name):
+                dropped.append(name)
+            else:
+                columns.append(column)
+
+        joined: list[dict[str, Any]] = []
+        for session in sessions:
+            item = dict(session)
+            row = rows_by_session.get(session.get("session_id"))
+            if row is None:
+                item["ride"] = None
+                item["ride_reason"] = "vehicle-server has no stored ride summary for this session"
+            else:
+                values, dropped_values = _without_position_keys(row.get("values"))
+                flags, dropped_flags = _without_position_keys(row.get("flags"))
+                dropped.extend(dropped_values + dropped_flags)
+                item["ride"] = {"values": values, "flags": flags, "columns": columns}
+            joined.append(item)
+
+        result["sessions"] = joined
+        result["skipped"] = payload.get("skipped", 0)
+        if result["undated"]:
+            result["undated_ride_reason"] = (
+                "undated sessions have no ride scalars: /rides selects sessions by created_utc"
+            )
+        if dropped:
+            result["dropped_position_names"] = list(dict.fromkeys(dropped))
+            result["note"] = _POSITION_NOTE
+        return result
+
     def query_ride_history(self, start_date: str, end_date: str) -> dict[str, Any]:
         """Summarise the sessions whose created_utc is inside an inclusive date range.
 
@@ -317,6 +465,12 @@ class VehicleTools:
         offset it is UTC). mean_loss_percent is the unweighted mean of the per-session
         loss_percent values. Sessions without a parseable created_utc are listed under
         `undated`, whatever the range, and are not summarised.
+
+        The server's stored class-B ride scalars are joined onto every dated session as
+        `ride` (values, flags and column units); a session the server skipped has
+        `ride: null` and a reason; undated sessions get none (`undated_ride_reason`). If
+        /rides is missing or fails, the output keeps the session data and states that
+        ride scalars are unavailable.
         """
         start = _parse_bound(start_date, end=False)
         end = _parse_bound(end_date, end=True)
@@ -347,7 +501,7 @@ class VehicleTools:
             status if isinstance(status := session.get("status"), str) and status else "unknown"
             for session in sessions
         )
-        return {
+        result = {
             "start_utc": start.isoformat(),
             "end_utc": end.isoformat(),
             "count": len(sessions),
@@ -357,3 +511,4 @@ class VehicleTools:
             "sessions": sessions,
             "undated": undated,
         }
+        return self._with_ride_scalars(result, sessions, start_date, end_date)
