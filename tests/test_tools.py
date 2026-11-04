@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import json
 
 import httpx
@@ -8,6 +9,7 @@ from mcp.server.mcpserver.exceptions import ToolError
 
 from tests.support import (
     ENGINE_SPEED,
+    RIDE_SESSIONS,
     TOKEN,
     FakeVehicleServer,
 )
@@ -397,6 +399,107 @@ def test_query_ride_history_rejects_invalid_date(
     assert fake_server.requests == []
 
 
+def test_query_ride_history_joins_ride_scalars_and_skipped_sessions(
+    ride_tools: VehicleTools,
+) -> None:
+    result = ride_tools.query_ride_history("2026-10-01", "2026-10-02")
+    by_id = {session["session_id"]: session for session in result["sessions"]}
+    early = by_id["ride-early"]
+    assert early["ride"]["values"] == {"ride_distance": 12.3, "ride_time": 90.0}
+    assert early["ride"]["flags"] == {"ride_distance": None, "ride_time": None}
+    assert early["ride"]["columns"] == [
+        {"name": "ride_distance", "unit": "km"},
+        {"name": "ride_time", "unit": "s"},
+    ]
+    middle = by_id["ride-middle"]
+    assert middle["ride"]["flags"]["ride_time"] == "missing_inputs"
+    failed = by_id["ride-failed"]
+    assert failed["ride"] is None
+    assert "no stored ride summary" in failed["ride_reason"]
+    assert result["skipped"] == 1
+
+
+def test_query_ride_history_keeps_undated_sessions_without_ride(
+    ride_tools: VehicleTools,
+) -> None:
+    result = ride_tools.query_ride_history("2026-10-01", "2026-10-03")
+    assert [session["session_id"] for session in result["undated"]] == [
+        "ride-undated",
+        "ride-bad-date",
+    ]
+    assert all("ride" not in session for session in result["undated"])
+    assert all("ride" in session for session in result["sessions"])
+
+
+def test_query_ride_history_keeps_sessions_when_rides_route_is_missing() -> None:
+    fake = FakeVehicleServer(sessions=copy.deepcopy(RIDE_SESSIONS), supports_rides=False)
+    client = VehicleServerClient(
+        Settings(server_url="http://server.test", api_token=TOKEN),
+        transport=httpx.MockTransport(fake.handler),
+    )
+    try:
+        result = VehicleTools(client).query_ride_history("2026-10-01", "2026-10-02")
+    finally:
+        client.close()
+    assert result["ride_scalars"] == "unavailable"
+    assert "ride scalars route" in result["ride_scalars_reason"]
+    assert [session["session_id"] for session in result["sessions"]] == [
+        "ride-early",
+        "ride-middle",
+        "ride-failed",
+    ]
+    assert all("ride" not in session for session in result["sessions"])
+
+
+def test_query_ride_history_keeps_sessions_when_rides_errors() -> None:
+    fake = FakeVehicleServer(
+        sessions=copy.deepcopy(RIDE_SESSIONS),
+        rides_error=(503, "ride store unavailable"),
+    )
+    client = VehicleServerClient(
+        Settings(server_url="http://server.test", api_token=TOKEN),
+        transport=httpx.MockTransport(fake.handler),
+    )
+    try:
+        result = VehicleTools(client).query_ride_history("2026-10-01", "2026-10-02")
+    finally:
+        client.close()
+    assert result["ride_scalars"] == "unavailable"
+    assert "ride store unavailable" in result["ride_scalars_reason"]
+    assert result["count"] == 3
+
+
+@pytest.mark.parametrize(
+    ("start", "end", "start_utc", "end_utc"),
+    [
+        (
+            "2026-10-01",
+            "2026-10-02",
+            "2026-10-01T00:00:00+00:00",
+            "2026-10-02T23:59:59.999999+00:00",
+        ),
+        (
+            "2026-10-01T20:00:00",
+            "2026-10-01T20:00:00",
+            "2026-10-01T20:00:00+00:00",
+            "2026-10-01T20:00:00+00:00",
+        ),
+        (
+            "2026-10-01T22:00:00+02:00",
+            "2026-10-01T22:00:00+02:00",
+            "2026-10-01T20:00:00+00:00",
+            "2026-10-01T20:00:00+00:00",
+        ),
+    ],
+)
+def test_query_ride_history_bounds_are_utc_like_vehicle_server(
+    ride_tools: VehicleTools, start: str, end: str, start_utc: str, end_utc: str
+) -> None:
+    result = ride_tools.query_ride_history(start, end)
+    assert result["start_utc"] == start_utc
+    assert result["end_utc"] == end_utc
+
+
 @pytest.mark.parametrize(
     ("session_id", "status"),
     [
@@ -453,6 +556,7 @@ def test_every_request_is_an_authenticated_get(
     tools.compute_signal_stats("s1", "did.ENGINE_SPEED")
     tools.compare_sessions("s1", "s2", "did.ENGINE_SPEED")
     tools.query_ride_history("2026-10-01", "2026-10-02")
+    tools.get_ride_summary("s1")
 
     assert fake_server.requests
     for request in fake_server.requests:
@@ -471,6 +575,7 @@ def test_tool_results_never_contain_the_token(tools: VehicleTools) -> None:
         tools.compute_signal_stats("s1", "did.ENGINE_SPEED"),
         tools.compare_sessions("s1", "s2", "did.ENGINE_SPEED"),
         tools.query_ride_history("2026-10-01", "2026-10-02"),
+        tools.get_ride_summary("s1"),
     ]
     assert TOKEN not in json.dumps(results, default=str)
 

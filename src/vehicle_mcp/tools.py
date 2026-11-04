@@ -16,7 +16,12 @@ from typing import Any, Literal
 
 from mcp.server.mcpserver.exceptions import ToolError
 
-from .source import HistorySource, SourceError, StatsRouteUnavailable
+from .source import (
+    HistorySource,
+    RidesRouteUnavailable,
+    SourceError,
+    StatsRouteUnavailable,
+)
 from .stats import STATS_MAX_POINTS, compute_stats
 
 MIN_SERIES_POINTS = 10
@@ -376,6 +381,57 @@ class VehicleTools:
             "delta": delta,
         }
 
+    def _with_ride_scalars(
+        self,
+        result: dict[str, Any],
+        sessions: list[dict[str, Any]],
+        start_date: str,
+        end_date: str,
+    ) -> dict[str, Any]:
+        """Join the server's /rides scalars onto the listed dated sessions."""
+        try:
+            payload = self._source.rides(start=start_date, end=end_date, signals=None)
+        except (RidesRouteUnavailable, SourceError) as exc:
+            result["ride_scalars"] = "unavailable"
+            result["ride_scalars_reason"] = str(exc)
+            return result
+
+        if (
+            not isinstance(payload, dict)
+            or not isinstance(payload.get("rows"), list)
+            or not isinstance(payload.get("columns"), list)
+        ):
+            result["ride_scalars"] = "unavailable"
+            result["ride_scalars_reason"] = (
+                "vehicle-server returned an unexpected ride-scalars response"
+            )
+            return result
+
+        rows_by_session = {
+            row["session_id"]: row
+            for row in payload["rows"]
+            if isinstance(row, dict) and isinstance(row.get("session_id"), str)
+        }
+        columns = payload["columns"]
+        joined: list[dict[str, Any]] = []
+        for session in sessions:
+            item = dict(session)
+            row = rows_by_session.get(session.get("session_id"))
+            if row is None:
+                item["ride"] = None
+                item["ride_reason"] = "vehicle-server has no stored ride summary for this session"
+            else:
+                item["ride"] = {
+                    "values": row.get("values"),
+                    "flags": row.get("flags"),
+                    "columns": columns,
+                }
+            joined.append(item)
+
+        result["sessions"] = joined
+        result["skipped"] = payload.get("skipped", 0)
+        return result
+
     def query_ride_history(self, start_date: str, end_date: str) -> dict[str, Any]:
         """Summarise the sessions whose created_utc is inside an inclusive date range.
 
@@ -383,6 +439,11 @@ class VehicleTools:
         offset it is UTC). mean_loss_percent is the unweighted mean of the per-session
         loss_percent values. Sessions without a parseable created_utc are listed under
         `undated`, whatever the range, and are not summarised.
+
+        The server's stored class-B ride scalars are joined onto every dated session as
+        `ride` (values, flags and column units); a session the server skipped has
+        `ride: null` and a reason. If the server has no /rides route, the output keeps
+        the session data and states that ride scalars are unavailable.
         """
         start = _parse_bound(start_date, end=False)
         end = _parse_bound(end_date, end=True)
@@ -413,7 +474,7 @@ class VehicleTools:
             status if isinstance(status := session.get("status"), str) and status else "unknown"
             for session in sessions
         )
-        return {
+        result = {
             "start_utc": start.isoformat(),
             "end_utc": end.isoformat(),
             "count": len(sessions),
@@ -423,3 +484,4 @@ class VehicleTools:
             "sessions": sessions,
             "undated": undated,
         }
+        return self._with_ride_scalars(result, sessions, start_date, end_date)

@@ -127,6 +127,23 @@ def test_query_ride_history_runs_on_any_history_source() -> None:
     assert result["mean_loss_percent"] == pytest.approx(0.5)
 
 
+def test_query_ride_history_joins_ride_scalars_on_any_source() -> None:
+    source: HistorySource = InMemorySource(
+        [
+            {
+                "session_id": "a",
+                "created_utc": "2026-10-01T10:00:00Z",
+                "packet_count": 10,
+                "loss_percent": 0.5,
+                "status": "ok",
+            }
+        ]
+    )
+    result = VehicleTools(source).query_ride_history("2026-10-01", "2026-10-01")
+    assert result["skipped"] == 0
+    assert result["sessions"][0]["ride"] is None
+
+
 def test_ride_summary_uses_the_summary_route(
     client: VehicleServerClient, fake_server: FakeVehicleServer
 ) -> None:
