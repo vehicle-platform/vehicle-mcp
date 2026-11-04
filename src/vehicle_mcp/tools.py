@@ -412,7 +412,16 @@ class VehicleTools:
             for row in payload["rows"]
             if isinstance(row, dict) and isinstance(row.get("session_id"), str)
         }
-        columns = payload["columns"]
+        columns: list[Any] = []
+        dropped_columns: list[str] = []
+        for column in payload["columns"]:
+            name = column.get("name") if isinstance(column, dict) else None
+            if isinstance(name, str) and is_position_name(name):
+                dropped_columns.append(name)
+            else:
+                columns.append(column)
+
+        all_dropped = list(dropped_columns)
         joined: list[dict[str, Any]] = []
         for session in sessions:
             item = dict(session)
@@ -421,15 +430,38 @@ class VehicleTools:
                 item["ride"] = None
                 item["ride_reason"] = "vehicle-server has no stored ride summary for this session"
             else:
-                item["ride"] = {
-                    "values": row.get("values"),
-                    "flags": row.get("flags"),
-                    "columns": columns,
-                }
+                values = row.get("values")
+                flags = row.get("flags")
+                ride_dropped = list(dropped_columns)
+                for mapping in (values, flags):
+                    if isinstance(mapping, dict):
+                        ride_dropped.extend(
+                            name
+                            for name in mapping
+                            if isinstance(name, str) and is_position_name(name)
+                        )
+                if isinstance(values, dict):
+                    values = {
+                        name: value
+                        for name, value in values.items()
+                        if not (isinstance(name, str) and is_position_name(name))
+                    }
+                if isinstance(flags, dict):
+                    flags = {
+                        name: value
+                        for name, value in flags.items()
+                        if not (isinstance(name, str) and is_position_name(name))
+                    }
+                item["ride"] = {"values": values, "flags": flags, "columns": columns}
+                if ride_dropped:
+                    item["ride"]["dropped_position_names"] = list(dict.fromkeys(ride_dropped))
+                    all_dropped.extend(ride_dropped)
             joined.append(item)
 
         result["sessions"] = joined
         result["skipped"] = payload.get("skipped", 0)
+        if all_dropped:
+            result["dropped_position_names"] = list(dict.fromkeys(all_dropped))
         return result
 
     def query_ride_history(self, start_date: str, end_date: str) -> dict[str, Any]:

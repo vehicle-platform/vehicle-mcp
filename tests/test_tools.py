@@ -419,6 +419,28 @@ def test_query_ride_history_joins_ride_scalars_and_skipped_sessions(
     assert result["skipped"] == 1
 
 
+def test_query_ride_history_hides_position_looking_ride_names(
+    ride_tools: VehicleTools, fake_server: FakeVehicleServer
+) -> None:
+    fake_server.rides_payload["columns"].append({"name": "sensor.gps_longitude", "unit": "deg"})
+    for row in fake_server.rides_payload["rows"]:
+        row["values"]["sensor.gps_longitude"] = 29.0
+        row["flags"]["sensor.gps_longitude"] = None
+    result = ride_tools.query_ride_history("2026-10-01", "2026-10-02")
+    assert result["dropped_position_names"] == ["sensor.gps_longitude"]
+    for session in result["sessions"]:
+        ride = session.get("ride")
+        if ride is None:
+            continue
+        assert [column["name"] for column in ride["columns"]] == [
+            "ride_distance",
+            "ride_time",
+        ]
+        assert "sensor.gps_longitude" not in ride["values"]
+        assert "sensor.gps_longitude" not in ride["flags"]
+        assert ride["dropped_position_names"] == ["sensor.gps_longitude"]
+
+
 def test_query_ride_history_keeps_undated_sessions_without_ride(
     ride_tools: VehicleTools,
 ) -> None:
