@@ -14,8 +14,8 @@ An **independent open-source** Model Context Protocol server (Python). Exposes v
 
 `vehicle-mcp` speaks MCP over stdio and wraps the read-only HTTP API of
 [`vehicle-server`](https://github.com/vehicle-platform/vehicle-server): recorded sessions,
-reports, time-series slices, computed statistics and session comparisons. It never talks to
-the motorcycle bus and never writes to the server.
+reports, time-series slices, computed statistics, session comparisons and stored class-B ride
+summaries. It never talks to the motorcycle bus and never writes to the server.
 
 ## Install
 
@@ -72,13 +72,26 @@ Every tool is read-only and issues GET requests only.
 | `get_timeseries_slice` | `session_id`, `signals`, `start_ms`, `end_ms`, `max_points` (default 500) | Samples (`t_ms`, `v`), `points_total` and `downsampled`; capped at 2000 points per series |
 | `compute_signal_stats` | `session_id`, `signal`, `start_ms`, `end_ms` | `count`, `min`, `max`, `mean`, `std`, `p05`, `p50`, `p95`, `duration_ms`, `unit` |
 | `compare_sessions` | `session_a`, `session_b`, `signal` | Stats for both sessions plus the `b - a` delta for each non-null field |
-| `query_ride_history` | `start_date`, `end_date` (ISO 8601 date or timestamp) | Sessions inside the inclusive range sorted by `created_utc`, with `count`, `total_packet_count`, `mean_loss_percent` and a status histogram; sessions with a missing or unparseable `created_utc` are returned under `undated` |
+| `query_ride_history` | `start_date`, `end_date` (ISO 8601 date or timestamp) | Sessions inside the inclusive range sorted by `created_utc`, with `count`, `total_packet_count`, `mean_loss_percent`, a status histogram and each session's stored class-B `ride` scalars; sessions with a missing or unparseable `created_utc` are returned under `undated` |
+| `get_ride_summary` | `session_id` | The stored class-B ride summary of one session: scalars (name, value, unit, status, flag) and binned signals (axes, cells), exactly as `vehicle-server` computed and stored them |
 
 A date-only bound covers the whole UTC day; a full timestamp is an exact instant, and one without an
 offset is taken as UTC. The result echoes the bounds it used as `start_utc` and `end_utc`.
 `mean_loss_percent` is the unweighted mean of the per-session `loss_percent` values (`null` when
 none is numeric). Sessions whose `created_utc` is missing or unparseable are listed under `undated`
 whatever the range, and are excluded from the summary.
+
+Every dated session also gets a `ride` object with the server's `values`, `flags` and `columns`
+units from `GET /rides`; a session the server skipped gets `ride: null` with a reason, and the
+server's `skipped` count is added. An older server without `/rides` keeps today's session output
+and adds `ride_scalars: "unavailable"` with the reason instead of failing the query.
+
+`get_ride_summary` treats one session as one ride. The values are computed once by
+`vehicle-server` from vehicle-defs definitions; the tool never recomputes, rebins, converts,
+rounds or aggregates them. A `null` value carries the server's status or flag reason in the same
+entry. Binned signals keep the server's axes and cells, and a stored `defs_mismatch` adds a
+warning that the stored bin edges differ from the current defs. Position-looking names are
+dropped and listed under `dropped_position_names`.
 
 `compute_signal_stats` and `compare_sessions` ask `vehicle-server` for exact statistics
 (`GET /sessions/{id}/stats`) and do not need the full series. With an older server that lacks
@@ -87,14 +100,20 @@ that route, they fall back to `GET /sessions/{id}/series`; if that window was do
 `null` with an `approximate_reason`; the server does not guess them from the reduced series.
 Statistics always come from the server or this tool, never from the model.
 
+The ride-summary tools require `vehicle-server` with server#46 (merged 2026-11-02). No release
+tag contains that merge yet: `v0.6.0` and older have no `/sessions/{id}/summary` or `/rides`
+route. A server without `/rides` is handled with the fallback described above; a server without
+`/sessions/{id}/summary` makes `get_ride_summary` fail with the server's 404 error.
+
 ## Data sources
 
 The tools read through `HistorySource` (`src/vehicle_mcp/source.py`): `sessions()`,
-`report()`, `series()` and `stats()` in the vehicle-server response shapes. `stats()` returns
-the exact full-resolution count, mean, standard deviation, min/max, p05/p50/p95 and first/last
-timestamps; the tools fall back to `series()` only when the server has no `/stats` route.
-`VehicleServerClient` is the default implementation; another project can plug in its own source
-without touching the tools.
+`report()`, `series()`, `stats()`, `ride_summary()` and `rides()` in the vehicle-server
+response shapes. `stats()` returns the exact full-resolution count, mean, standard deviation,
+min/max, p05/p50/p95 and first/last timestamps; the tools fall back to `series()` only when the
+server has no `/stats` route. `ride_summary()` and `rides()` return the stored class-B summary
+and ride table without changing the values. `VehicleServerClient` is the default
+implementation; another project can plug in its own source without touching the tools.
 
 ## Guarantees
 
