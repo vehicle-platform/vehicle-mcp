@@ -428,6 +428,7 @@ def test_query_ride_history_hides_position_looking_ride_names(
         row["flags"]["sensor.gps_longitude"] = None
     result = ride_tools.query_ride_history("2026-10-01", "2026-10-02")
     assert result["dropped_position_names"] == ["sensor.gps_longitude"]
+    assert "GPS position" in result["note"]
     for session in result["sessions"]:
         ride = session.get("ride")
         if ride is None:
@@ -438,7 +439,20 @@ def test_query_ride_history_hides_position_looking_ride_names(
         ]
         assert "sensor.gps_longitude" not in ride["values"]
         assert "sensor.gps_longitude" not in ride["flags"]
-        assert ride["dropped_position_names"] == ["sensor.gps_longitude"]
+
+
+def test_query_ride_history_hides_a_position_key_without_a_column(
+    ride_tools: VehicleTools, fake_server: FakeVehicleServer
+) -> None:
+    for row in fake_server.rides_payload["rows"]:
+        row["flags"]["sensor.gps_latitude"] = "computed"
+    result = ride_tools.query_ride_history("2026-10-01", "2026-10-02")
+    assert result["dropped_position_names"] == ["sensor.gps_latitude"]
+    assert all(
+        "sensor.gps_latitude" not in session["ride"]["flags"]
+        for session in result["sessions"]
+        if session["ride"] is not None
+    )
 
 
 def test_query_ride_history_keeps_undated_sessions_without_ride(
@@ -451,6 +465,7 @@ def test_query_ride_history_keeps_undated_sessions_without_ride(
     ]
     assert all("ride" not in session for session in result["undated"])
     assert all("ride" in session for session in result["sessions"])
+    assert "created_utc" in result["undated_ride_reason"]
 
 
 def test_query_ride_history_keeps_sessions_when_rides_route_is_missing() -> None:

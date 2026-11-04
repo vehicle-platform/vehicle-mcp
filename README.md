@@ -83,9 +83,11 @@ whatever the range, and are excluded from the summary.
 
 Every dated session also gets a `ride` object with the server's `values`, `flags` and `columns`
 units from `GET /rides`; a session the server skipped gets `ride: null` with a reason, and the
-server's `skipped` count is added. Position-looking ride names are dropped and listed under
-`dropped_position_names`. An older server without `/rides` keeps today's session output and adds
-`ride_scalars: "unavailable"` with the reason instead of failing the query.
+server's `skipped` count is added. Undated sessions get no ride scalars (`/rides` selects by
+`created_utc`), stated once as `undated_ride_reason`. Position-looking ride names are dropped and
+listed once under the top-level `dropped_position_names`. An older server without `/rides`, or any
+`/rides` error, keeps today's session output and adds `ride_scalars: "unavailable"` with the
+reason instead of failing the query.
 
 `get_ride_summary` treats one session as one ride. The values are computed once by
 `vehicle-server` from vehicle-defs definitions; the tool never recomputes, rebins, converts,

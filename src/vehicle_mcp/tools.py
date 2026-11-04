@@ -18,7 +18,6 @@ from mcp.server.mcpserver.exceptions import ToolError
 
 from .source import (
     HistorySource,
-    RidesRouteUnavailable,
     SourceError,
     StatsRouteUnavailable,
 )
@@ -72,6 +71,15 @@ def _summary_position_names(entry: dict[str, Any]) -> list[str]:
             if isinstance(input_name, str) and is_position_name(input_name):
                 names.append(input_name)
     return names
+
+
+def _without_position_keys(mapping: Any) -> tuple[Any, list[str]]:
+    """A /rides `values` or `flags` mapping without position-looking keys, and those keys."""
+    if not isinstance(mapping, dict):
+        return mapping, []
+    dropped = [name for name in mapping if isinstance(name, str) and is_position_name(name)]
+    kept = {name: value for name, value in mapping.items() if name not in dropped}
+    return kept, dropped
 
 
 def _as_utc(parsed: datetime) -> datetime:
@@ -388,10 +396,14 @@ class VehicleTools:
         start_date: str,
         end_date: str,
     ) -> dict[str, Any]:
-        """Join the server's /rides scalars onto the listed dated sessions."""
+        """Join the server's /rides scalars onto the listed dated sessions.
+
+        Any source error (a missing route included) keeps the session part, which is
+        still valid, and states why the ride scalars are unavailable.
+        """
         try:
             payload = self._source.rides(start=start_date, end=end_date, signals=None)
-        except (RidesRouteUnavailable, SourceError) as exc:
+        except SourceError as exc:  # RidesRouteUnavailable is one of them
             result["ride_scalars"] = "unavailable"
             result["ride_scalars_reason"] = str(exc)
             return result
@@ -413,15 +425,14 @@ class VehicleTools:
             if isinstance(row, dict) and isinstance(row.get("session_id"), str)
         }
         columns: list[Any] = []
-        dropped_columns: list[str] = []
+        dropped: list[str] = []
         for column in payload["columns"]:
             name = column.get("name") if isinstance(column, dict) else None
             if isinstance(name, str) and is_position_name(name):
-                dropped_columns.append(name)
+                dropped.append(name)
             else:
                 columns.append(column)
 
-        all_dropped = list(dropped_columns)
         joined: list[dict[str, Any]] = []
         for session in sessions:
             item = dict(session)
@@ -430,38 +441,21 @@ class VehicleTools:
                 item["ride"] = None
                 item["ride_reason"] = "vehicle-server has no stored ride summary for this session"
             else:
-                values = row.get("values")
-                flags = row.get("flags")
-                ride_dropped = list(dropped_columns)
-                for mapping in (values, flags):
-                    if isinstance(mapping, dict):
-                        ride_dropped.extend(
-                            name
-                            for name in mapping
-                            if isinstance(name, str) and is_position_name(name)
-                        )
-                if isinstance(values, dict):
-                    values = {
-                        name: value
-                        for name, value in values.items()
-                        if not (isinstance(name, str) and is_position_name(name))
-                    }
-                if isinstance(flags, dict):
-                    flags = {
-                        name: value
-                        for name, value in flags.items()
-                        if not (isinstance(name, str) and is_position_name(name))
-                    }
+                values, dropped_values = _without_position_keys(row.get("values"))
+                flags, dropped_flags = _without_position_keys(row.get("flags"))
+                dropped.extend(dropped_values + dropped_flags)
                 item["ride"] = {"values": values, "flags": flags, "columns": columns}
-                if ride_dropped:
-                    item["ride"]["dropped_position_names"] = list(dict.fromkeys(ride_dropped))
-                    all_dropped.extend(ride_dropped)
             joined.append(item)
 
         result["sessions"] = joined
         result["skipped"] = payload.get("skipped", 0)
-        if all_dropped:
-            result["dropped_position_names"] = list(dict.fromkeys(all_dropped))
+        if result["undated"]:
+            result["undated_ride_reason"] = (
+                "undated sessions have no ride scalars: /rides selects sessions by created_utc"
+            )
+        if dropped:
+            result["dropped_position_names"] = list(dict.fromkeys(dropped))
+            result["note"] = _POSITION_NOTE
         return result
 
     def query_ride_history(self, start_date: str, end_date: str) -> dict[str, Any]:
@@ -474,8 +468,9 @@ class VehicleTools:
 
         The server's stored class-B ride scalars are joined onto every dated session as
         `ride` (values, flags and column units); a session the server skipped has
-        `ride: null` and a reason. If the server has no /rides route, the output keeps
-        the session data and states that ride scalars are unavailable.
+        `ride: null` and a reason; undated sessions get none (`undated_ride_reason`). If
+        /rides is missing or fails, the output keeps the session data and states that
+        ride scalars are unavailable.
         """
         start = _parse_bound(start_date, end=False)
         end = _parse_bound(end_date, end=True)
