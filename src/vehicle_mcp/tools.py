@@ -47,6 +47,28 @@ def _position_error(signal: str) -> ToolError:
     )
 
 
+_RIDE_SUMMARY_WARNING = "stored bin edges differ from the current defs; values are as stored"
+_POSITION_NOTE = (
+    "position-looking names are hidden: vehicle-server does not expose GPS "
+    "position yet (D-076 item 3 is not implemented)"
+)
+
+
+def _summary_position_names(entry: dict[str, Any]) -> list[str]:
+    """Names in one summary entry that look like a GPS position component."""
+    names: list[str] = []
+    name = entry.get("name")
+    if isinstance(name, str) and is_position_name(name):
+        names.append(name)
+    axes = entry.get("axes")
+    if isinstance(axes, list):
+        for axis in axes:
+            input_name = axis.get("input") if isinstance(axis, dict) else None
+            if isinstance(input_name, str) and is_position_name(input_name):
+                names.append(input_name)
+    return names
+
+
 def _as_utc(parsed: datetime) -> datetime:
     """A timestamp without an offset is taken as UTC."""
     if parsed.tzinfo is None:
@@ -161,6 +183,50 @@ class VehicleTools:
     ) -> dict[str, Any] | str:
         """Read one session report as structured JSON or as pre-rendered text."""
         return self._call(lambda: self._source.report(session_id, text=format == "text"))
+
+    def get_ride_summary(self, session_id: str) -> dict[str, Any]:
+        """Read the stored class-B ride summary of one session.
+
+        One session is one ride. The scalars and binned signals are computed once by
+        vehicle-server from vehicle-defs definitions and returned here exactly as stored:
+        this tool never recomputes, rebins, converts or aggregates a value. A null value
+        carries the server's status/flag reason in the same entry. Binned signals keep
+        their server-provided axes and cells; `defs_mismatch` is passed through and adds
+        a warning when the stored bin edges differ from the current defs.
+        """
+        payload = self._call(lambda: self._source.ride_summary(session_id))
+        if not isinstance(payload, dict) or not isinstance(payload.get("signals"), list):
+            raise ToolError(
+                "vehicle-server returned an unexpected ride summary response "
+                "(expected an object with a 'signals' list)"
+            )
+
+        kept: list[dict[str, Any]] = []
+        dropped: list[str] = []
+        for entry in payload["signals"]:
+            if not isinstance(entry, dict) or not isinstance(entry.get("name"), str):
+                raise ToolError("vehicle-server returned a ride summary signal without a name")
+            position_names = _summary_position_names(entry)
+            if position_names:
+                dropped.extend(position_names)
+            else:
+                kept.append(entry)
+
+        result = dict(payload)
+        result["signals"] = kept
+        if dropped:
+            result["dropped_position_names"] = dropped
+            result["note"] = _POSITION_NOTE
+
+        defs_mismatch = payload.get("defs_mismatch") is True or any(
+            entry.get("defs_mismatch") is True for entry in kept
+        )
+        warnings = list(payload["warnings"]) if isinstance(payload.get("warnings"), list) else []
+        if defs_mismatch and _RIDE_SUMMARY_WARNING not in warnings:
+            warnings.append(_RIDE_SUMMARY_WARNING)
+        if warnings:
+            result["warnings"] = warnings
+        return result
 
     def list_series(self, session_id: str) -> dict[str, Any]:
         """List a session's series names, kinds, units and point counts (no samples)."""

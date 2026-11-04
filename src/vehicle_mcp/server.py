@@ -36,6 +36,7 @@ def build_server(source: HistorySource) -> MCPServer:
         tools.compute_signal_stats,
         tools.compare_sessions,
         tools.query_ride_history,
+        tools.get_ride_summary,
     ):
         server.tool()(tool)
     return server

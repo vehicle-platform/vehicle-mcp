@@ -63,6 +63,81 @@ def test_get_session_report_text(tools: VehicleTools, fake_server: FakeVehicleSe
     assert fake_server.requests[0].url.params["format"] == "text"
 
 
+def test_get_ride_summary_returns_stored_scalars_and_binned_cells(
+    tools: VehicleTools,
+) -> None:
+    result = tools.get_ride_summary("s1")
+    assert result["session_id"] == "s1"
+    assert result["ride_definition"] == "session"
+    by_name = {entry["name"]: entry for entry in result["signals"]}
+    assert by_name["ride_distance"]["value"] == 12.3
+    assert by_name["ride_distance"]["flag"] is None
+    assert by_name["ride_fuel_used"] == {
+        "name": "ride_fuel_used",
+        "status": "missing_inputs",
+        "missing": ["did.ENGINE_FUEL_RATE"],
+    }
+    binned = by_name["ride_coolant_time_at_temp"]
+    assert binned["kind"] == "binned"
+    assert binned["axes"][0]["edges"] == [[40.0, 60.0], [60.0, 80.0]]
+    assert binned["cells"][0] == {"index": 0, "axes": [0], "value": 1.0, "flag": None}
+    assert binned["cells"][1] == {"index": 1, "axes": [1], "value": None, "flag": None}
+    assert "warnings" not in result
+
+
+def test_get_ride_summary_warns_about_a_defs_mismatch(
+    tools: VehicleTools, fake_server: FakeVehicleServer
+) -> None:
+    entry = fake_server.summaries["s1"]["signals"][3]
+    entry["defs_mismatch"] = True
+    result = tools.get_ride_summary("s1")
+    binned = next(e for e in result["signals"] if e["name"] == "ride_coolant_time_at_temp")
+    assert binned["defs_mismatch"] is True
+    assert any("stored bin edges" in warning for warning in result["warnings"])
+
+
+def test_get_ride_summary_without_a_stored_summary_is_explanatory(
+    tools: VehicleTools,
+) -> None:
+    with pytest.raises(ToolError, match="no ride summary"):
+        tools.get_ride_summary("clean")
+
+
+def test_get_ride_summary_unknown_session_is_explanatory(tools: VehicleTools) -> None:
+    with pytest.raises(ToolError, match="unknown session"):
+        tools.get_ride_summary("nope")
+
+
+def test_get_ride_summary_drops_position_looking_names(
+    tools: VehicleTools, fake_server: FakeVehicleServer
+) -> None:
+    fake_server.summaries["position"] = {
+        "session_id": "position",
+        "ride_definition": "session",
+        "defs_version": "vtest",
+        "signals": [
+            {
+                "name": "sensor.gps_latitude",
+                "status": "computed",
+                "kind": "scalar",
+                "unit": "deg",
+                "value": 41.0,
+            },
+            {
+                "name": "ride_distance",
+                "status": "computed",
+                "kind": "scalar",
+                "unit": "km",
+                "value": 1.0,
+            },
+        ],
+    }
+    result = tools.get_ride_summary("position")
+    assert [entry["name"] for entry in result["signals"]] == ["ride_distance"]
+    assert result["dropped_position_names"] == ["sensor.gps_latitude"]
+    assert "D-076" in result["note"]
+
+
 def test_get_timeseries_slice_passes_window_and_caps_points(
     tools: VehicleTools, fake_server: FakeVehicleServer
 ) -> None:

@@ -36,6 +36,7 @@ def test_registers_exactly_the_read_only_tools() -> None:
         "compute_signal_stats",
         "compare_sessions",
         "query_ride_history",
+        "get_ride_summary",
     }
     assert all("position" not in tool.name for tool in tools)
 
@@ -78,6 +79,7 @@ def test_happy_path_through_mcp() -> None:
                 "query_ride_history", {"start_date": "2026-10-01", "end_date": "2026-10-02"}
             )
         )
+        ride_summary = asyncio.run(server.call_tool("get_ride_summary", {"session_id": "s1"}))
     finally:
         client.close()
 
@@ -89,3 +91,5 @@ def test_happy_path_through_mcp() -> None:
     assert "# Session s1" in "\n".join(block.text for block in report_text.content)
     assert history.is_error is False
     assert '"undated"' in "\n".join(block.text for block in history.content)
+    assert ride_summary.is_error is False
+    assert '"ride_distance"' in "\n".join(block.text for block in ride_summary.content)
