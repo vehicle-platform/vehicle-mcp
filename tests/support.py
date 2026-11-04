@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 from typing import Any
 
 import httpx
@@ -141,6 +142,81 @@ RIDE_SESSIONS: list[dict[str, Any]] = [
     },
 ]
 
+SUMMARY_BY_SESSION: dict[str, dict[str, Any]] = {
+    "s1": {
+        "session_id": "s1",
+        "ride_definition": "session",
+        "defs_version": "vtest",
+        "signals": [
+            {
+                "name": "ride_distance",
+                "status": "computed",
+                "unit": "km",
+                "range": [0.0, 2000.0],
+                "kind": "scalar",
+                "value": 12.3,
+                "flag": None,
+            },
+            {
+                "name": "ride_time",
+                "status": "computed",
+                "unit": "s",
+                "range": [0.0, 86400.0],
+                "kind": "scalar",
+                "value": 90.0,
+                "flag": None,
+            },
+            {
+                "name": "ride_fuel_used",
+                "status": "missing_inputs",
+                "missing": ["did.ENGINE_FUEL_RATE"],
+            },
+            {
+                "name": "ride_coolant_time_at_temp",
+                "status": "computed",
+                "unit": "s",
+                "range": [0.0, 600.0],
+                "kind": "binned",
+                "axes": [
+                    {
+                        "input": "did.COOLANT_TEMP",
+                        "unit": "degC",
+                        "edges": [[40.0, 60.0], [60.0, 80.0]],
+                    }
+                ],
+                "cells": [
+                    {"index": 0, "axes": [0], "value": 1.0, "flag": None},
+                    {"index": 1, "axes": [1], "value": None, "flag": None},
+                ],
+                "total_s": 10.0,
+                "outside_s": 2.0,
+            },
+        ],
+    },
+}
+
+RIDES_PAYLOAD: dict[str, Any] = {
+    "columns": [
+        {"name": "ride_distance", "unit": "km"},
+        {"name": "ride_time", "unit": "s"},
+    ],
+    "rows": [
+        {
+            "session_id": "ride-early",
+            "created_utc": "2026-10-01T09:00:00Z",
+            "values": {"ride_distance": 12.3, "ride_time": 90.0},
+            "flags": {"ride_distance": None, "ride_time": None},
+        },
+        {
+            "session_id": "ride-middle",
+            "created_utc": "2026-10-01T22:00:00+02:00",
+            "values": {"ride_distance": 0.0, "ride_time": None},
+            "flags": {"ride_distance": "out_of_range", "ride_time": "missing_inputs"},
+        },
+    ],
+    "skipped": 1,
+}
+
 SESSION_INDEX: list[dict[str, Any]] = [
     {
         "session_id": "s1",
@@ -201,10 +277,16 @@ class FakeVehicleServer:
         sessions: list[dict[str, Any]] | None = None,
         *,
         supports_stats: bool = True,
+        supports_rides: bool = True,
+        rides_error: tuple[int, str] | None = None,
     ) -> None:
         self.requests: list[httpx.Request] = []
         self.sessions = sessions if sessions is not None else SESSION_INDEX
         self.supports_stats = supports_stats
+        self.supports_rides = supports_rides
+        self.rides_error = rides_error
+        self.summaries = copy.deepcopy(SUMMARY_BY_SESSION)
+        self.rides_payload = copy.deepcopy(RIDES_PAYLOAD)
 
     def handler(self, request: httpx.Request) -> httpx.Response:
         assert request.method == "GET", f"unexpected {request.method} {request.url}"
@@ -213,12 +295,23 @@ class FakeVehicleServer:
         parts = [part for part in request.url.path.split("/") if part]
         if parts == ["sessions"]:
             return httpx.Response(200, json=self.sessions)
+        if parts == ["rides"]:
+            return self._rides()
 
         if len(parts) == 3 and parts[0] == "sessions":
             session_id, leaf = parts[1], parts[2]
             if session_id in FAILURES:
                 status = FAILURES[session_id]
                 return httpx.Response(status, json={"detail": f"{DETAILS[status]}: {session_id}"})
+            if leaf == "summary":
+                summary = self.summaries.get(session_id)
+                if summary is None:
+                    if session_id not in SERIES_BY_SESSION:
+                        return httpx.Response(
+                            404, json={"detail": f"unknown session: {session_id}"}
+                        )
+                    return httpx.Response(404, json={"detail": "session has no ride summary"})
+                return httpx.Response(200, json=summary)
             if session_id not in SERIES_BY_SESSION:
                 return httpx.Response(404, json={"detail": f"unknown session: {session_id}"})
             if leaf == "report":
@@ -230,6 +323,14 @@ class FakeVehicleServer:
                     return httpx.Response(404, json={"detail": "Not Found"})
                 return self._stats(request, session_id)
         return httpx.Response(404, json={"detail": f"unknown path: {request.url.path}"})
+
+    def _rides(self) -> httpx.Response:
+        if not self.supports_rides:
+            return httpx.Response(404, json={"detail": "Not Found"})
+        if self.rides_error is not None:
+            status, detail = self.rides_error
+            return httpx.Response(status, json={"detail": detail})
+        return httpx.Response(200, json=self.rides_payload)
 
     def _report(self, request: httpx.Request, session_id: str) -> httpx.Response:
         if request.url.params.get("format") == "text":

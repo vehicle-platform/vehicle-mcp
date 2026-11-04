@@ -20,6 +20,14 @@ class StatsRouteUnavailable(SourceError):
     """The server has no exact-statistics route (an older server without SV-2)."""
 
 
+class RidesRouteUnavailable(SourceError):
+    """The server has no /rides route (an older server before server#46)."""
+
+
+class NoRideSummary(SourceError):
+    """The session exists but the server has no stored ride summary for it."""
+
+
 class HistorySource(Protocol):
     """Read-only access to recorded sessions."""
 
@@ -52,3 +60,18 @@ class HistorySource(Protocol):
         """Exact statistics in the GET /sessions/{id}/stats shape: `series` entries
         with `name`, `kind`, `unit`, `count`, `mean`, `std`, `min`, `max`, `p05`,
         `p50`, `p95`, `t_first_ms` and `t_last_ms`."""
+
+    def ride_summary(self, session_id: str) -> Any:
+        """A stored ride summary in the GET /sessions/{id}/summary shape:
+        `session_id`, `ride_definition`, `defs_version` and `signals` entries with
+        `name`, `status`, `kind`, `unit`, `range`, `value`, `flag`, `axes` and `cells`."""
+
+    def rides(
+        self,
+        *,
+        start: str | None,
+        end: str | None,
+        signals: list[str] | None,
+    ) -> Any:
+        """The GET /rides shape: `columns` entries with `name` and `unit`, `rows`
+        entries with `session_id`, `created_utc`, `values` and `flags`, and `skipped`."""
