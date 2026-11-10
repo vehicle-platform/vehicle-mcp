@@ -4,7 +4,7 @@ Part of [vehicle-platform](https://github.com/vehicle-platform), an SDV-style di
 
 An **independent open-source** Model Context Protocol server (Python). Exposes vehicle telemetry to LLMs as **read-only** tools. Runs on the Raspi 5, on the same machine as `vehicle-linux-node`, but is a separate repo. Purpose: so other DIY vehicle/motorcycle projects can use it too, and it serves as an org showcase.
 
-**Status:** v0.1.0 — a stdio MCP server over the read-only HTTP API of `vehicle-server`.
+**Status:** v0.2.0 — a stdio MCP server over the read-only HTTP API of `vehicle-server`.
 
 - Architecture and decisions: [vehicle-defs/docs](https://github.com/vehicle-platform/vehicle-defs/tree/main/docs) (`ARCHITECTURE.md`, `DECISIONS.md`)
 - Series names, CAN IDs and DIDs come only from `vehicle-server` / [vehicle-defs](https://github.com/vehicle-platform/vehicle-defs); this repo hard-codes none
