@@ -1,6 +1,6 @@
 [project]
 name = "vehicle-mcp"
-version = "0.1.0"
+version = "0.2.0"
 description = "Read-only Model Context Protocol server for the vehicle-platform telemetry API."
 readme = "README.md"
 authors = [{ name = "vehicle-platform" }]
