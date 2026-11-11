@@ -74,6 +74,8 @@ Every tool is read-only and issues GET requests only.
 | `compare_sessions` | `session_a`, `session_b`, `signal` | Stats for both sessions plus the `b - a` delta for each non-null field |
 | `query_ride_history` | `start_date`, `end_date` (ISO 8601 date or timestamp) | Sessions inside the inclusive range sorted by `created_utc`, with `count`, `total_packet_count`, `mean_loss_percent`, a status histogram and each session's stored class-B `ride` scalars; sessions with a missing or unparseable `created_utc` are returned under `undated` |
 | `get_ride_summary` | `session_id` | The stored class-B ride summary of one session: scalars (name, value, unit, status, flag) and binned signals (axes, cells), exactly as `vehicle-server` computed and stored them |
+| `list_fault_catalog` | `subsystem` (optional) | The displayable fault catalog entries in compact form: `id`, `subsystem`, `root_cause`, `severity`, `advise_stop`, `detectable_now`, symptom summary. Lookup only, never a diagnosis; unconfirmed entries are never requested |
+| `get_fault` | `fault_id` | One displayable catalog entry in full, including `rider_text`, `action` and `sources`. A 404 (older server without `/faults`, unknown or unconfirmed entry) is answered as `available: false` with the reason |
 
 A date-only bound covers the whole UTC day; a full timestamp is an exact instant, and one without an
 offset is taken as UTC. The result echoes the bounds it used as `start_utc` and `end_utc`.

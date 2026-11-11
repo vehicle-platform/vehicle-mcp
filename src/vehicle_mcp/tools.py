@@ -17,6 +17,7 @@ from typing import Any, Literal
 from mcp.server.mcpserver.exceptions import ToolError
 
 from .source import (
+    FaultNotAvailable,
     HistorySource,
     SourceError,
     StatsRouteUnavailable,
@@ -119,6 +120,37 @@ def _number(value: Any) -> int | float | None:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
     return value
+
+
+_FAULT_NOTE = (
+    "Catalog lookup only, not a diagnosis. If advise_stop is true, tell the rider to stop "
+    "safely and have the motorcycle inspected; never say that riding on is safe (D-084)."
+)
+
+
+def _symptom_summary(symptom: Any) -> str:
+    if not isinstance(symptom, dict):
+        return str(symptom)
+    text = f"{symptom.get('signal')} {symptom.get('direction')}"
+    if symptom.get("condition"):
+        text += f" ({symptom['condition']})"
+    return text
+
+
+def _compact_fault(entry: dict[str, Any]) -> dict[str, Any]:
+    rating = entry.get("rating")
+    symptoms = entry.get("symptoms")
+    return {
+        "id": entry.get("id"),
+        "subsystem": entry.get("subsystem"),
+        "root_cause": entry.get("root_cause"),
+        "severity": rating.get("severity") if isinstance(rating, dict) else None,
+        "advise_stop": entry.get("advise_stop"),
+        "detectable_now": entry.get("detectable_now"),
+        "symptoms": (
+            "; ".join(_symptom_summary(s) for s in symptoms) if isinstance(symptoms, list) else ""
+        ),
+    }
 
 
 class VehicleTools:
@@ -240,6 +272,69 @@ class VehicleTools:
         if warnings:
             result["warnings"] = warnings
         return result
+
+    def list_fault_catalog(self, subsystem: str | None = None) -> dict[str, Any]:
+        """List the sourced fault catalog (compact), optionally for one subsystem.
+
+        This only looks up the catalog that vehicle-defs ships; it never diagnoses a
+        motorcycle and never says that a fault is present. Only displayable (confirmed)
+        entries are listed. Each entry has id, subsystem, root_cause, severity,
+        advise_stop, detectable_now and a one-line symptom summary; call get_fault for
+        the full entry. If advise_stop is true, any answer to the rider must tell them
+        to stop safely and have the motorcycle inspected, and must never say that
+        riding on is safe. If the catalog is not available the result has
+        available=false and a reason; relay the reason and do not guess.
+        """
+        try:
+            payload = self._source.fault_catalog(subsystem=subsystem)
+        except FaultNotAvailable as exc:
+            return {"available": False, "reason": str(exc), "note": _FAULT_NOTE}
+        except SourceError as exc:
+            raise ToolError(str(exc)) from None
+        if not isinstance(payload, dict) or not isinstance(payload.get("entries"), list):
+            raise ToolError(
+                "vehicle-server returned an unexpected fault catalog response "
+                "(expected an object with an 'entries' list)"
+            )
+        entries = [_compact_fault(e) for e in payload["entries"] if isinstance(e, dict)]
+        return {
+            "available": True,
+            "defs_version": payload.get("defs_version"),
+            "vehicle": payload.get("vehicle"),
+            "subsystem": subsystem,
+            "count": len(entries),
+            "entries": entries,
+            "note": _FAULT_NOTE,
+        }
+
+    def get_fault(self, fault_id: str) -> dict[str, Any]:
+        """Read one displayable fault catalog entry in full: root cause, symptoms,
+        rating, rider_text, action and sources.
+
+        This only looks up the sourced catalog; it never diagnoses and never says the
+        fault is present on this motorcycle. If advise_stop is true, the answer must tell
+        the rider to stop safely and have the motorcycle inspected, never that riding on
+        is safe. If the entry is not available (unknown id, unconfirmed entry or an older
+        server) the result has available=false and a reason; relay it, do not guess.
+        """
+        try:
+            payload = self._source.fault(fault_id)
+        except FaultNotAvailable as exc:
+            return {"available": False, "reason": str(exc), "note": _FAULT_NOTE}
+        except SourceError as exc:
+            raise ToolError(str(exc)) from None
+        if not isinstance(payload, dict) or not isinstance(payload.get("entry"), dict):
+            raise ToolError(
+                "vehicle-server returned an unexpected fault response "
+                "(expected an object with an 'entry' object)"
+            )
+        return {
+            "available": True,
+            "defs_version": payload.get("defs_version"),
+            "vehicle": payload.get("vehicle"),
+            "entry": payload["entry"],
+            "note": _FAULT_NOTE,
+        }
 
     def list_series(self, session_id: str) -> dict[str, Any]:
         """List a session's series names, kinds, units and point counts (no samples)."""
