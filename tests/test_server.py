@@ -37,6 +37,8 @@ def test_registers_exactly_the_read_only_tools() -> None:
         "compare_sessions",
         "query_ride_history",
         "get_ride_summary",
+        "list_fault_catalog",
+        "get_fault",
     }
     assert all("position" not in tool.name for tool in tools)
 

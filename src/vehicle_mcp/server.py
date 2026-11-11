@@ -17,7 +17,9 @@ INSTRUCTIONS = (
     "Every tool issues GET requests only; nothing is written, cleared or sent to the "
     "vehicle bus. Series names, kinds and units come from the server, and position "
     "series are not available (D-076 item 3 is not implemented). The server never "
-    "returns the API token."
+    "returns the API token. The fault catalog tools only look up a sourced catalog; they "
+    "never diagnose, and an entry with advise_stop true means: tell the rider to stop "
+    "safely and have it inspected, never that riding on is safe."
 )
 
 
@@ -37,6 +39,8 @@ def build_server(source: HistorySource) -> MCPServer:
         tools.compare_sessions,
         tools.query_ride_history,
         tools.get_ride_summary,
+        tools.list_fault_catalog,
+        tools.get_fault,
     ):
         server.tool()(tool)
     return server

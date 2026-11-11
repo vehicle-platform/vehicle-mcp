@@ -13,6 +13,7 @@ import httpx
 
 from .config import Settings
 from .source import (
+    FaultNotAvailable,
     NoRideSummary,
     RidesRouteUnavailable,
     SourceError,
@@ -225,4 +226,39 @@ class VehicleServerClient:
                 raise RidesRouteUnavailable(
                     "vehicle-server does not expose the ride scalars route"
                 ) from None
+            raise
+
+    def fault_catalog(self, *, subsystem: str | None) -> Any:
+        # include_unconfirmed is never sent: unconfirmed entries must not reach a rider.
+        params: dict[str, str] = {}
+        if subsystem is not None:
+            params["subsystem"] = subsystem
+        try:
+            return self.get_json("/faults", params)
+        except VehicleServerError as exc:
+            detail = (exc.detail or "").strip().lower()
+            if exc.status_code == 404 and detail in {"", "not found", "not found."}:
+                raise FaultNotAvailable(
+                    "vehicle-server does not expose the fault catalog route (older server)"
+                ) from None
+            if exc.status_code == 422:
+                raise VehicleServerError(
+                    f"vehicle-server rejected the subsystem {subsystem!r} (422): "
+                    "it is not a known fault subsystem",
+                    status_code=422,
+                    detail=exc.detail,
+                ) from None
+            raise
+
+    def fault(self, fault_id: str) -> Any:
+        try:
+            return self.get_json(f"/faults/{quote(fault_id, safe='')}")
+        except VehicleServerError as exc:
+            if exc.status_code == 404:
+                detail = (exc.detail or "").strip().replace(self._settings.api_token, "***")
+                if detail.lower() in {"", "not found", "not found."}:
+                    raise FaultNotAvailable(
+                        "vehicle-server does not expose the fault catalog route (older server)"
+                    ) from None
+                raise FaultNotAvailable(f"fault {fault_id!r} is not available: {detail}") from None
             raise

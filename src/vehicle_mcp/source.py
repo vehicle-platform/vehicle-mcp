@@ -28,6 +28,10 @@ class NoRideSummary(SourceError):
     """The session exists but the server has no stored ride summary for it."""
 
 
+class FaultNotAvailable(SourceError):
+    """The fault catalog (or one entry) is not served: an older server or an unconfirmed entry."""
+
+
 class HistorySource(Protocol):
     """Read-only access to recorded sessions."""
 
@@ -75,3 +79,11 @@ class HistorySource(Protocol):
     ) -> Any:
         """The GET /rides shape: `columns` entries with `name` and `unit`, `rows`
         entries with `session_id`, `created_utc`, `values` and `flags`, and `skipped`."""
+
+    def fault_catalog(self, *, subsystem: str | None) -> Any:
+        """The GET /faults shape (displayable entries only): `defs_version`,
+        `vehicle` and `entries`. Never asks for unconfirmed entries."""
+
+    def fault(self, fault_id: str) -> Any:
+        """The GET /faults/{id} shape (displayable entries only): `defs_version`,
+        `vehicle` and `entry`."""

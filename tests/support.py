@@ -269,6 +269,26 @@ DETAILS = {
 }
 
 
+FAULT_ENTRY: dict[str, Any] = {
+    "id": "F-TEST-01",
+    "subsystem": "cooling",
+    "root_cause": "synthetic coolant loss",
+    "symptoms": [
+        {"signal": "did.COOLANT_TEMP", "direction": "rising", "condition": "at idle"},
+        {"signal": "did.ENGINE_SPEED", "direction": "stable"},
+    ],
+    "needs": ["did.COOLANT_TEMP"],
+    "residual": "none",
+    "rating": {"severity": 8, "occurrence": 3, "detectability": 4},
+    "detectable_now": True,
+    "advise_stop": True,
+    "rider_text": "Stop safely and have the motorcycle inspected.",
+    "action": "inspect cooling system",
+    "sources": [{"ref": "synthetic", "confidence": "high"}],
+    "displayable": True,
+}
+
+
 class FakeVehicleServer:
     """A routed httpx.MockTransport handler with recorded requests."""
 
@@ -278,6 +298,7 @@ class FakeVehicleServer:
         *,
         supports_stats: bool = True,
         supports_rides: bool = True,
+        supports_faults: bool = True,
         rides_error: tuple[int, str] | None = None,
     ) -> None:
         self.requests: list[httpx.Request] = []
@@ -285,6 +306,7 @@ class FakeVehicleServer:
         self.supports_stats = supports_stats
         self.supports_rides = supports_rides
         self.rides_error = rides_error
+        self.supports_faults = supports_faults
         self.summaries = copy.deepcopy(SUMMARY_BY_SESSION)
         self.rides_payload = copy.deepcopy(RIDES_PAYLOAD)
 
@@ -297,6 +319,8 @@ class FakeVehicleServer:
             return httpx.Response(200, json=self.sessions)
         if parts == ["rides"]:
             return self._rides()
+        if parts and parts[0] == "faults":
+            return self._faults(request, parts)
 
         if len(parts) == 3 and parts[0] == "sessions":
             session_id, leaf = parts[1], parts[2]
@@ -323,6 +347,23 @@ class FakeVehicleServer:
                     return httpx.Response(404, json={"detail": "Not Found"})
                 return self._stats(request, session_id)
         return httpx.Response(404, json={"detail": f"unknown path: {request.url.path}"})
+
+    def _faults(self, request: httpx.Request, parts: list[str]) -> httpx.Response:
+        if not self.supports_faults:
+            return httpx.Response(404, json={"detail": "Not Found"})
+        if len(parts) == 1:
+            subsystem = request.url.params.get("subsystem")
+            if subsystem not in {None, "cooling", "brakes"}:
+                return httpx.Response(422, json={"detail": f"unknown subsystem: {subsystem}"})
+            entries = [FAULT_ENTRY] if subsystem in {None, "cooling"} else []
+            return httpx.Response(
+                200, json={"defs_version": "vtest", "vehicle": "cl250", "entries": entries}
+            )
+        if len(parts) == 2 and parts[1] == FAULT_ENTRY["id"]:
+            return httpx.Response(
+                200, json={"defs_version": "vtest", "vehicle": "cl250", "entry": FAULT_ENTRY}
+            )
+        return httpx.Response(404, json={"detail": f"unknown fault: {parts[-1]}"})
 
     def _rides(self) -> httpx.Response:
         if not self.supports_rides:
