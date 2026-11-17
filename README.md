@@ -34,7 +34,7 @@ Configuration is environment-only. The token is never logged and never returned 
 | Variable | Required | Default | Meaning |
 |---|---|---|---|
 | `VEHICLE_API_TOKEN` | yes | — | Bearer token of `vehicle-server`; startup fails without it |
-| `VEHICLE_SERVER_URL` | no | `http://127.0.0.1:8000` | Base URL of `vehicle-server` |
+| `VEHICLE_SERVER_URL` | no | `http://127.0.0.1:8000` | Base URL of `vehicle-server`. Plain `http://` is accepted only for localhost and private/loopback IP addresses; anything else needs `https://` (or `VEHICLE_MCP_ALLOW_INSECURE_HTTP=1` on a trusted network path) |
 
 ## Run
 
@@ -122,6 +122,7 @@ implementation; another project can plug in its own source without touching the 
 
 ## Guarantees
 
+- **Untrusted text:** strings that originate from the vehicle or the phone (free-text meta fields, report reasons) are returned as `{"untrusted_text": "..."}` (truncated, control characters removed) or between `<<<UNTRUSTED ...>>>` fences in text reports; the server instructions tell the model they are data, never instructions. Result sizes are capped (sessions per call, at most 8 series and 8000 points per slice, 8 MiB per server answer).
 - **Read-only:** only GET requests; no writes, no UDS, no CAN, no vehicle-bus access.
 - **No invented signals:** names, kinds and units come from the server; an unknown name is a
   clear error, and nothing is hard-coded here.

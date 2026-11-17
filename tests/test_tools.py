@@ -16,6 +16,7 @@ from tests.support import (
 from vehicle_mcp.client import VehicleServerClient
 from vehicle_mcp.config import Settings
 from vehicle_mcp.tools import VehicleTools, is_position_name
+from vehicle_mcp.untrusted import FENCE_CLOSE, FENCE_OPEN
 
 
 def test_list_sessions_returns_index_metadata(tools: VehicleTools) -> None:
@@ -61,7 +62,8 @@ def test_get_session_report_json_passthrough(tools: VehicleTools) -> None:
 
 def test_get_session_report_text(tools: VehicleTools, fake_server: FakeVehicleServer) -> None:
     result = tools.get_session_report("s1", format="text")
-    assert result.startswith("# Session s1")
+    assert result.startswith(FENCE_OPEN + "\n# Session s1")
+    assert result.endswith(FENCE_CLOSE)
     assert fake_server.requests[0].url.params["format"] == "text"
 
 

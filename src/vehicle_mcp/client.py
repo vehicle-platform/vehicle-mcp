@@ -11,6 +11,7 @@ from urllib.parse import quote
 
 import httpx
 
+from . import untrusted
 from .config import Settings
 from .source import (
     FaultNotAvailable,
@@ -21,6 +22,7 @@ from .source import (
 )
 
 _MAX_DETAIL_CHARS = 300
+MAX_RESPONSE_BYTES = 8 * 1024 * 1024  # a larger answer is refused, never buffered (audit A-17)
 
 _STATUS_HINTS = {
     401: "vehicle-server rejected the bearer token (401); check VEHICLE_API_TOKEN",
@@ -50,12 +52,12 @@ def _detail(response: httpx.Response) -> str:
         payload = response.json()
     except ValueError:
         text = response.text.strip()
-        return text[:_MAX_DETAIL_CHARS] if text else "no detail"
+        return untrusted.clean(text, _MAX_DETAIL_CHARS) if text else "no detail"
     if isinstance(payload, dict) and "detail" in payload:
         text = str(payload["detail"])
     else:
         text = str(payload)
-    return text[:_MAX_DETAIL_CHARS]
+    return untrusted.clean(text, _MAX_DETAIL_CHARS)
 
 
 def _session_path(session_id: str, suffix: str) -> str:
@@ -87,7 +89,7 @@ class VehicleServerClient:
 
     def _get(self, path: str, params: dict[str, Any] | None = None) -> httpx.Response:
         try:
-            response = self._client.get(path, params=params)
+            response = self._read_capped(path, params)
         except httpx.TimeoutException:
             raise VehicleServerError(
                 f"vehicle-server at {self.base_url} did not answer within "
@@ -106,6 +108,26 @@ class VehicleServerClient:
                 detail=detail,
             )
         return response
+
+    def _read_capped(self, path: str, params: dict[str, Any] | None) -> httpx.Response:
+        """One GET whose body is read at most MAX_RESPONSE_BYTES (the rest is never buffered)."""
+        with self._client.stream("GET", path, params=params) as response:
+            declared = response.headers.get("content-length", "")
+            if declared.isdigit() and int(declared) > MAX_RESPONSE_BYTES:
+                raise VehicleServerError("vehicle-server answer is too large to read")
+            body = bytearray()
+            for chunk in response.iter_bytes():
+                body.extend(chunk)
+                if len(body) > MAX_RESPONSE_BYTES:
+                    raise VehicleServerError("vehicle-server answer is too large to read")
+            return httpx.Response(
+                response.status_code,
+                headers=[
+                    (k, v) for k, v in response.headers.items() if k.lower() != "content-encoding"
+                ],
+                content=bytes(body),
+                request=response.request,
+            )
 
     def _status_message(self, response: httpx.Response, detail: str | None = None) -> str:
         status = response.status_code
