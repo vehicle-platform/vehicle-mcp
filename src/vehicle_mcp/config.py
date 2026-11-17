@@ -6,6 +6,7 @@ logged or returned. VEHICLE_SERVER_URL defaults to the local vehicle-server.
 
 from __future__ import annotations
 
+import ipaddress
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -13,6 +14,20 @@ from urllib.parse import urlparse
 
 DEFAULT_SERVER_URL = "http://127.0.0.1:8000"
 REQUEST_TIMEOUT_S = 10.0
+
+
+ALLOW_INSECURE_ENV = "VEHICLE_MCP_ALLOW_INSECURE_HTTP"
+
+
+def _is_local_host(host: str) -> bool:
+    """Loopback or private-range address (or `localhost`): plain http stays on the machine/LAN."""
+    if host.lower() in {"localhost", "localhost."}:
+        return True
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return address.is_loopback or address.is_private or address.is_link_local
 
 
 class ConfigError(RuntimeError):
@@ -45,5 +60,13 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
     parsed = urlparse(url)
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
         raise ConfigError("VEHICLE_SERVER_URL must be a valid http:// or https:// URL")
+
+    if parsed.scheme == "http" and not _is_local_host(parsed.hostname or ""):
+        if source.get(ALLOW_INSECURE_ENV, "").strip() != "1":
+            raise ConfigError(
+                "VEHICLE_SERVER_URL uses plain http:// to a non-local host, which would send the "
+                "bearer token unencrypted; use https://, or set "
+                f"{ALLOW_INSECURE_ENV}=1 if the network path is trusted"
+            )
 
     return Settings(server_url=url.rstrip("/"), api_token=token)

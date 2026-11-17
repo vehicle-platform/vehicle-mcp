@@ -94,8 +94,11 @@ def test_tools_run_on_any_history_source() -> None:
     source: HistorySource = InMemorySource()
     tools = VehicleTools(source)
 
-    assert tools.list_sessions() == {"sessions": [{"session_id": "mem-1"}]}
-    assert tools.get_session_report("mem-1", format="text") == "synthetic"
+    result = tools.list_sessions()
+    assert result["sessions"] == [{"session_id": "mem-1"}]
+    assert result["total"] == 1
+    assert result["truncated"] is False
+    assert "\nsynthetic\n" in tools.get_session_report("mem-1", format="text")
     assert [s["name"] for s in tools.list_series("mem-1")["series"]] == ["derived.sample"]
     stats = tools.compute_signal_stats("mem-1", "derived.sample")
     assert (stats["mean"], stats["min"], stats["max"], stats["duration_ms"]) == (2.5, 1.0, 4.0, 300)
