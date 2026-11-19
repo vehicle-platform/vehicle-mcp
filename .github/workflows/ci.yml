@@ -28,5 +28,13 @@ jobs:
       - name: Format check (ruff format)
         run: uv run ruff format --check .
 
-      - name: Test
-        run: uv run pytest
+      - name: Type check (mypy)
+        run: uv run mypy
+
+      - name: Test (coverage floor in pyproject)
+        run: uv run pytest --cov --cov-report=term-missing
+
+      - name: Dependency audit (pip-audit on the locked set)
+        run: |
+          uv export --frozen --no-hashes --all-extras --no-emit-project -o "$RUNNER_TEMP/req.txt"
+          uvx pip-audit -r "$RUNNER_TEMP/req.txt" --disable-pip --no-deps --strict

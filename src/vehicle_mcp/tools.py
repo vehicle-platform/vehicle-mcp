@@ -249,7 +249,7 @@ class VehicleTools:
         result = self._call(lambda: self._source.report(session_id, text=format == "text"))
         if isinstance(result, str):
             return untrusted.fence(result, MAX_REPORT_TEXT_CHARS)
-        marked = untrusted.mark(result)
+        marked: dict[str, Any] = untrusted.mark(result)
         if len(json.dumps(marked)) > MAX_REPORT_JSON_CHARS:
             raise ToolError("the report is too large for one answer; request format='text'")
         if isinstance(marked, dict):
