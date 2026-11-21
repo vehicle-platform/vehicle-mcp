@@ -19,6 +19,7 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "hypothesis>=6.120",
     "mypy>=2.4.1",
     "pytest>=8.0",
     "pytest-cov>=7.1.0",
@@ -36,7 +37,10 @@ select = ["E", "F", "I", "UP", "B", "C90", "PLR0912", "PLR0913", "PLR0915"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-markers = ["position_vectors: the defs position-rule golden vectors (T22)"]
+markers = [
+    "position_vectors: the defs position-rule golden vectors (T22)",
+    "fuzz: Hypothesis properties (bounded in PR CI; HYPOTHESIS_PROFILE=deep for the deep run)",
+]
 
 [tool.ruff.lint.mccabe]
 max-complexity = 15
