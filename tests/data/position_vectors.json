@@ -1,0 +1,384 @@
+{
+  "_comment": "Golden vectors for vehicle_defs.position (T22, D-076). Coordinates are obviously fake; never put real GPS or ride data here (D-033). Consumers test their own copy of the rule against this file.",
+  "is_position_key": [
+    {
+      "name": "sensor.gps_lat_deg",
+      "expected": true
+    },
+    {
+      "name": "gps_latitude_e7",
+      "expected": true
+    },
+    {
+      "name": "sensor.gps_longitude",
+      "expected": true
+    },
+    {
+      "name": "gps_lon",
+      "expected": true
+    },
+    {
+      "name": "gps_lng",
+      "expected": true
+    },
+    {
+      "name": "sensor.gps_altitude_m",
+      "expected": true
+    },
+    {
+      "name": "gps_height_above_ellipsoid",
+      "expected": true
+    },
+    {
+      "name": "gps_ecef_x",
+      "expected": true
+    },
+    {
+      "name": "gps_hMSL",
+      "expected": true
+    },
+    {
+      "name": "gps_alt_m",
+      "expected": true
+    },
+    {
+      "name": "gps_height_mm",
+      "expected": true
+    },
+    {
+      "name": "gpsLat",
+      "expected": true
+    },
+    {
+      "name": "GpsLongitude",
+      "expected": true
+    },
+    {
+      "name": "sensor.gps_altitude",
+      "expected": true
+    },
+    {
+      "name": "GPS_LAT",
+      "expected": true
+    },
+    {
+      "name": "Latitude",
+      "expected": true
+    },
+    {
+      "name": "LNG",
+      "expected": true
+    },
+    {
+      "name": "hMSL",
+      "expected": true
+    },
+    {
+      "name": "gpsHeight",
+      "expected": true
+    },
+    {
+      "name": "ecefX",
+      "expected": true
+    },
+    {
+      "name": "lat",
+      "expected": true
+    },
+    {
+      "name": "sensor.altitude_m",
+      "expected": true
+    },
+    {
+      "name": "Vehicle.CurrentLocation.Latitude",
+      "expected": true
+    },
+    {
+      "name": "Vehicle.CurrentLocation.Longitude",
+      "expected": true
+    },
+    {
+      "name": "Vehicle.Motorcycle.GNSS.Position.Altitude",
+      "expected": true
+    },
+    {
+      "name": "Vehicle.CurrentLocation.Anything",
+      "expected": true
+    },
+    {
+      "name": "Vehicle.Motorcycle.GNSS.Position",
+      "expected": true
+    },
+    {
+      "name": "Vehicle.Position.X",
+      "expected": true
+    },
+    {
+      "name": "vehicle.GNSS.position.fix",
+      "expected": true
+    },
+    {
+      "name": "Vehicle.CurrentLocation.Altitude_change",
+      "expected": true
+    },
+    {
+      "name": "latitude_change",
+      "expected": true
+    },
+    {
+      "name": "lon_change",
+      "expected": true
+    },
+    {
+      "name": "gps_lat_change",
+      "expected": true
+    },
+    {
+      "name": "altitude_change",
+      "expected": false
+    },
+    {
+      "name": "derived.altitude_change",
+      "expected": false
+    },
+    {
+      "name": "throttle_pos_pct",
+      "expected": false
+    },
+    {
+      "name": "did.ENGINE_SPEED",
+      "expected": false
+    },
+    {
+      "name": "derived.LEAN_ANGLE",
+      "expected": false
+    },
+    {
+      "name": "sensor.gps_ground_speed",
+      "expected": false
+    },
+    {
+      "name": "sensor.gps_heading",
+      "expected": false
+    },
+    {
+      "name": "position_sensor_ok",
+      "expected": false
+    },
+    {
+      "name": "Vehicle.Speed",
+      "expected": false
+    },
+    {
+      "name": "Vehicle.Motorcycle.LeanAngle",
+      "expected": false
+    },
+    {
+      "name": "Vehicle.LowVoltageBattery.CurrentVoltage",
+      "expected": false
+    },
+    {
+      "name": "Vehicle.Chassis.Accelerator.PedalPosition",
+      "expected": false
+    },
+    {
+      "name": "pedal_position",
+      "expected": false
+    },
+    {
+      "name": "gps_num_sat",
+      "expected": false
+    },
+    {
+      "name": "platform",
+      "expected": false
+    },
+    {
+      "name": "alternator_volts",
+      "expected": false
+    },
+    {
+      "name": "chalet",
+      "expected": false
+    },
+    {
+      "name": "flat",
+      "expected": false
+    },
+    {
+      "name": "slat_count",
+      "expected": false
+    },
+    {
+      "name": "plat",
+      "expected": false
+    },
+    {
+      "name": "height_change",
+      "expected": false
+    },
+    {
+      "name": "",
+      "expected": false
+    },
+    {
+      "name": "Vehicle.Powertrain.CombustionEngine.Speed",
+      "expected": false
+    }
+  ],
+  "drop_position_columns": [
+    {
+      "columns": [
+        "time",
+        "gps_lat",
+        "speed",
+        "gps_altitude_m",
+        "throttle_pos_pct",
+        "altitude_change"
+      ],
+      "expected": [
+        "time",
+        "speed",
+        "throttle_pos_pct",
+        "altitude_change"
+      ]
+    },
+    {
+      "columns": [
+        "gpsLat",
+        "gpsLon",
+        "hMSL",
+        "rpm"
+      ],
+      "expected": [
+        "rpm"
+      ]
+    },
+    {
+      "columns": [],
+      "expected": []
+    }
+  ],
+  "redact": [
+    {
+      "input": {
+        "speed": 12.5,
+        "gps_lat": 0.0,
+        "gps_lon": 0.0
+      },
+      "expected": {
+        "speed": 12.5
+      }
+    },
+    {
+      "input": {
+        "rows": [
+          {
+            "t": 1,
+            "latitude": 1.0,
+            "rpm": 900
+          },
+          {
+            "t": 2,
+            "gpsLng": 2.0,
+            "rpm": 950
+          }
+        ]
+      },
+      "expected": {
+        "rows": [
+          {
+            "t": 1,
+            "rpm": 900
+          },
+          {
+            "t": 2,
+            "rpm": 950
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "values": {
+          "derived.altitude_change": 3.0,
+          "sensor.gps_altitude": 99.0
+        }
+      },
+      "expected": {
+        "values": {
+          "derived.altitude_change": 3.0
+        }
+      }
+    },
+    {
+      "input": [
+        {
+          "Vehicle.CurrentLocation.Latitude": 0.0,
+          "Vehicle.Speed": 5
+        },
+        7,
+        "gps_lat",
+        null
+      ],
+      "expected": [
+        {
+          "Vehicle.Speed": 5
+        },
+        7,
+        "gps_lat",
+        null
+      ]
+    },
+    {
+      "input": {
+        "nested": {
+          "deep": {
+            "ecef_x": 0,
+            "ok": true
+          }
+        }
+      },
+      "expected": {
+        "nested": {
+          "deep": {
+            "ok": true
+          }
+        }
+      }
+    },
+    {
+      "input": {
+        "a": [
+          [
+            {
+              "lat": 0.0,
+              "b": 1
+            }
+          ]
+        ]
+      },
+      "expected": {
+        "a": [
+          [
+            {
+              "b": 1
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "input": {
+        "speed": 1
+      },
+      "expected": {
+        "speed": 1
+      }
+    },
+    {
+      "input": 5,
+      "expected": 5
+    }
+  ]
+}

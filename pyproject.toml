@@ -29,11 +29,14 @@ dev = [
 line-length = 100
 target-version = "py311"
 
+extend-exclude = ["src/vehicle_mcp/_position_vendored.py"]  # generated, vendored unchanged
+
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "C90", "PLR0912", "PLR0913", "PLR0915"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = ["position_vectors: the defs position-rule golden vectors (T22)"]
 
 [tool.ruff.lint.mccabe]
 max-complexity = 15
