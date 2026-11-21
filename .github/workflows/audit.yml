@@ -1,0 +1,33 @@
+# Weekly dependency audit (QUALITY CI-5). Also runs on PRs that touch a lockfile and on demand.
+# The same pip-audit already gates every PR in ci.yml; this run catches advisories published
+# after the last merge. Scheduled failures notify the repo owner (no issue automation yet).
+name: audit
+
+on:
+  schedule:
+    - cron: "43 5 * * 1"
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "uv.lock"
+      - ".github/workflows/audit.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  pip-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - name: Install uv
+        uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3.2.4
+        with:
+          version: "0.8.17"
+      - name: pip-audit on the locked set
+        run: |
+          uv export --frozen --no-hashes --all-extras --no-emit-project -o "$RUNNER_TEMP/req.txt"
+          uvx pip-audit -r "$RUNNER_TEMP/req.txt" --disable-pip --no-deps --strict
