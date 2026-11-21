@@ -1,0 +1,30 @@
+# Deep Hypothesis run (QUALITY PY-3 / T31): the PR-suite properties with
+# HYPOTHESIS_PROFILE=deep (1000 examples each). Opt-in: weekly schedule and manual dispatch
+# only, so it is never part of `ci-ok`.
+name: fuzz-deep
+
+on:
+  schedule:
+    - cron: "37 3 * * 0"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - name: Install uv
+        uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3.2.4
+        with:
+          version: "0.8.17"
+      - run: uv sync --locked
+      - name: Deep fuzz (pytest -m fuzz)
+        env:
+          HYPOTHESIS_PROFILE: deep
+        run: uv run pytest -m fuzz -q

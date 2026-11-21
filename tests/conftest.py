@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import os
+
 import httpx
 import pytest
+from hypothesis import HealthCheck, settings
 
 from tests.support import RIDE_SESSIONS, TOKEN, FakeVehicleServer
 from vehicle_mcp.client import VehicleServerClient
@@ -49,3 +52,13 @@ def old_tools(old_server: FakeVehicleServer) -> VehicleTools:
     )
     yield VehicleTools(client)
     client.close()
+
+
+# Hypothesis profiles (T31): bounded for PR CI; HYPOTHESIS_PROFILE=deep for the deep run.
+settings.register_profile(
+    "ci", max_examples=40, deadline=None, suppress_health_check=[HealthCheck.too_slow]
+)
+settings.register_profile(
+    "deep", max_examples=1000, deadline=None, suppress_health_check=[HealthCheck.too_slow]
+)
+settings.load_profile(os.environ.get("HYPOTHESIS_PROFILE", "ci"))
