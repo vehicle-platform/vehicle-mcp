@@ -104,6 +104,39 @@ def stopwords(locale: str) -> frozenset[str]:
     return frozenset(normalise(w) for w in words if isinstance(w, str))
 
 
+@functools.cache
+def synonyms(locale: str) -> dict[str, tuple[str, ...]]:
+    """Token expansions of one locale from the `synonyms` table in `locales/<locale>.json`.
+
+    Keys and values are folded like the text. A complaint word listed here also counts as
+    each of its synonyms ("dying" as "flat", "dead", "drained"), so riders' words reach the
+    catalog's wording. The table is one-way and exact (no stemming on the key).
+    """
+    code = re.sub(r"[^a-z]", "", locale.casefold())
+    if not code:
+        return {}
+    try:
+        raw = (resources.files("vehicle_mcp") / "locales" / f"{code}.json").read_text("utf-8")
+        table = json.loads(raw).get("synonyms", {})
+    except (OSError, ValueError, AttributeError):
+        return {}
+    result: dict[str, tuple[str, ...]] = {}
+    for key, values in table.items():
+        if isinstance(key, str) and isinstance(values, list):
+            result[normalise(key)] = tuple(normalise(v) for v in values if isinstance(v, str))
+    return result
+
+
+def expand(words: Sequence[str], locales: Sequence[str] = ()) -> list[str]:
+    """The words plus the synonyms of every word (English table always, then each locale)."""
+    extra: list[str] = []
+    for locale in ("en", *locales):
+        table = synonyms(locale)
+        for word in words:
+            extra.extend(table.get(word, ()))
+    return list(words) + [w for w in dict.fromkeys(extra) if w not in words]
+
+
 def active_stopwords(locales: Sequence[str]) -> frozenset[str]:
     """English is always applied, together with every requested locale."""
     result = set(stopwords("en"))
@@ -198,7 +231,7 @@ def best_phrase(
     complaint: str, phrases: Iterable[str], index: PhraseIndex
 ) -> tuple[float, str | None]:
     """The best coverage score of a complaint against catalog phrases, with the phrase."""
-    c_tokens = tokens(complaint, index.locales)
+    c_tokens = expand(tokens(complaint, index.locales), index.locales)
     best, best_text = 0.0, None
     for phrase in phrases:
         score = phrase_score(c_tokens, tokens(phrase, index.locales), index)

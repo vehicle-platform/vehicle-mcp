@@ -24,6 +24,7 @@ from .source import (
     HistorySource,
     SourceError,
     StatsRouteUnavailable,
+    UnconfirmedRefused,
 )
 from .stats import STATS_MAX_POINTS, compute_stats
 
@@ -194,6 +195,14 @@ MAX_CARD_SIGNALS = 4
 MAX_CARD_NAMES = 20
 MAX_SYMPTOM_MATCHES = 3
 MATCH_THRESHOLD = 0.55
+DATA_ONLY_MIN_RATIO = 0.8  # data_only needs >= 0.8 x the best displayable score
+DATA_ONLY_MAX_ENTRIES = 2  # best unconfirmed entry, plus one within the band
+DATA_ONLY_SCORE_BAND = 0.05
+DATA_ONLY_MAX_SIGNALS = 4
+_UNCONFIRMED_REFUSED = (
+    "vehicle-server did not allow unconfirmed entries for this token, so only confirmed "
+    "catalog entries were matched"
+)
 TREND_POINTS = 200
 
 
@@ -925,7 +934,7 @@ class VehicleTools:
             "note": _SYMPTOM_NOTE + " " + _FAULT_NOTE,
         }
         try:
-            payload = self._source.fault_catalog(subsystem=None)
+            payload, fallback = self._symptom_catalog()
         except FaultNotAvailable as exc:
             return {**base, "available": False, "matched": [], "reason": str(exc)}
         except SourceError as exc:
@@ -935,6 +944,8 @@ class VehicleTools:
                 "vehicle-server returned an unexpected fault catalog response "
                 "(expected an object with an 'entries' list)"
             )
+        if fallback:
+            base["reason"] = _UNCONFIRMED_REFUSED
 
         entries = [e for e in payload["entries"] if isinstance(e, dict)]
         phrased = [(e, self._complaint_phrases(payload, e, lang)) for e in entries]
@@ -950,26 +961,15 @@ class VehicleTools:
         phrase_index = matching.PhraseIndex(
             [p for _, phrases in phrased for p in phrases], ("en", lang)
         )
-        scored: list[tuple[float, str, dict[str, Any], str | None]] = []
-        for entry, phrases in phrased:
-            score, phrase = matching.best_phrase(text, phrases, phrase_index)
-            if score >= MATCH_THRESHOLD:
-                scored.append((score, str(entry.get("id")), entry, phrase))
-        scored.sort(key=lambda item: (-item[0], item[1]))
-        top = scored[:MAX_SYMPTOM_MATCHES]
-        if not top:
-            return {
-                **base,
-                "available": True,
-                "matched": [],
-                "reason": "no catalog entry matches these words; ask the rider to describe "
-                "the sound, smell, light or behaviour, or try get_data_card",
-            }
+        top, data_top = self._rank_symptoms(text, phrased, phrase_index, fallback)
 
         session: str | None = None
         created: str | None = None
         index: dict[str, dict[str, Any]] = {}
-        if any(entry.get("needs") for _, _, entry, _ in top):
+        wanted = [e for _, _, e, _ in top if e.get("needs")] + [
+            e for e in data_top if e.get("needs")
+        ]
+        if wanted:
             session, created = self._resolve_session(session_id)
             if session is not None:
                 _, series, _ = self._series_index(session)
@@ -979,6 +979,17 @@ class VehicleTools:
             self._symptom_match(score, entry, phrase, session, index)
             for score, _, entry, phrase in top
         ]
+        data_only = self._data_only_match(data_top, session, index)
+        if data_only is not None:
+            matched.append(data_only)
+        if not matched:
+            reason = (
+                "no catalog entry matches these words; ask the rider to describe "
+                "the sound, smell, light or behaviour, or try get_data_card"
+            )
+            if fallback:
+                reason += ". " + _UNCONFIRMED_REFUSED
+            return {**base, "available": True, "matched": [], "reason": reason}
         return {
             **base,
             "available": True,
@@ -986,6 +997,78 @@ class VehicleTools:
             "ride_date": created,
             "matched": matched,
         }
+
+    def _symptom_catalog(self) -> tuple[Any, bool]:
+        """The catalog with unconfirmed entries, or displayable-only (True) when refused."""
+        try:
+            return self._source.fault_catalog(subsystem=None, include_unconfirmed=True), False
+        except UnconfirmedRefused:
+            return self._source.fault_catalog(subsystem=None), True
+
+    @staticmethod
+    def _rank_symptoms(
+        text: str,
+        phrased: list[tuple[dict[str, Any], list[str]]],
+        phrase_index: matching.PhraseIndex,
+        fallback: bool,
+    ) -> tuple[list[tuple[float, str, dict[str, Any], str | None]], list[dict[str, Any]]]:
+        """Best displayable matches (full result) and unconfirmed ones (data only)."""
+        scored: list[tuple[float, str, dict[str, Any], str | None]] = []
+        data_scored: list[tuple[float, str, dict[str, Any]]] = []
+        for entry, phrases in phrased:
+            score, phrase = matching.best_phrase(text, phrases, phrase_index)
+            if score < MATCH_THRESHOLD:
+                continue
+            # Without the unconfirmed fetch every served entry is displayable by definition.
+            if fallback or entry.get("displayable") is True:
+                scored.append((score, str(entry.get("id")), entry, phrase))
+            else:
+                data_scored.append((score, str(entry.get("id")), entry))
+        scored.sort(key=lambda item: (-item[0], item[1]))
+        data_scored.sort(key=lambda item: (-item[0], item[1]))
+        top = scored[:MAX_SYMPTOM_MATCHES]
+        data_top: list[dict[str, Any]] = []
+        if data_scored:
+            best = data_scored[0][0]
+            # Noise control: data_only needs a score close to the best displayable match, and
+            # only the best unconfirmed entry (plus one within a hair of it) contributes.
+            if not top or best >= DATA_ONLY_MIN_RATIO * top[0][0]:
+                data_top = [
+                    entry
+                    for score, _, entry in data_scored[:DATA_ONLY_MAX_ENTRIES]
+                    if best - score <= DATA_ONLY_SCORE_BAND
+                ]
+        return top, data_top
+
+    def _data_only_match(
+        self,
+        entries: list[dict[str, Any]],
+        session: str | None,
+        index: dict[str, dict[str, Any]],
+    ) -> dict[str, Any] | None:
+        """One merged `data_only` item for unconfirmed matches (D-127 addendum): the ride's
+        measured values of the entries' `needs` signals and nothing else about the entries."""
+        votes: Counter[str] = Counter()
+        for entry in entries:
+            for need in dict.fromkeys(n for n in entry.get("needs") or [] if isinstance(n, str)):
+                votes[need] += 1
+        # Most-needed first; ties keep the first entry's order (Counter preserves insertion).
+        names = [n for n, _ in votes.most_common()][:DATA_ONLY_MAX_SIGNALS]
+        if not names:
+            return None
+        cards = [self._need_card(session, index[n], []) for n in names if session and n in index]
+        item: dict[str, Any] = {
+            "kind": "data_only",
+            "measurable": bool(cards),
+            "signals": cards,
+            "note": "Measured values only; no fault is named or confirmed.",
+        }
+        missing = [n for n in names if n not in index]
+        if missing:
+            item["missing_in_ride"] = missing
+        if not cards:
+            item["measurement_note"] = "The chosen ride has none of the related signals."
+        return item
 
     def _symptom_match(
         self,
