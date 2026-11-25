@@ -23,14 +23,18 @@ def test_list_is_compact_and_never_asks_for_unconfirmed(
 ) -> None:
     result = tools.list_fault_catalog()
     assert result["available"] is True
-    assert result["count"] == 1
+    assert result["count"] == 2
     entry = result["entries"][0]
     assert entry["id"] == "F-TEST-01"
     assert entry["severity"] == 8
     assert entry["advise_stop"] is True
-    assert "did.COOLANT_TEMP rising (at idle)" in entry["symptoms"]
+    assert "did.COOLANT_TEMP up (at idle)" in entry["symptoms"]
     assert "rider_text" not in entry
     assert "stop safely" in result["note"]
+    assert result["kind"] == "catalog_reference"
+    assert result["active"] is False
+    assert "not faults detected" in result["note"]
+    assert all(e["active"] is False for e in result["entries"])
     url = fake_server.requests[-1].url
     assert url.path == "/faults"
     assert "include_unconfirmed" not in str(url)

@@ -70,12 +70,14 @@ Every tool is read-only and issues GET requests only.
 | `get_session_report` | `session_id`, `format` (`json` or `text`) | The session report as structured JSON or pre-rendered text |
 | `list_series` | `session_id` | Series names, kinds, units and point counts; no samples |
 | `get_timeseries_slice` | `session_id`, `signals`, `start_ms`, `end_ms`, `max_points` (default 500) | Samples (`t_ms`, `v`), `points_total` and `downsampled`; capped at 2000 points per series |
-| `compute_signal_stats` | `session_id`, `signal`, `start_ms`, `end_ms` | `count`, `min`, `max`, `mean`, `std`, `p05`, `p50`, `p95`, `duration_ms`, `unit` |
-| `compare_sessions` | `session_a`, `session_b`, `signal` | Stats for both sessions plus the `b - a` delta for each non-null field |
+| `compute_signal_stats` | `session_id`, `signal`, `start_ms`, `end_ms` | Labelled quantities: `values` (min, mean, max, p05, p50, p95, std), `samples`, `duration` (s) |
+| `compare_sessions` | `session_a`, `session_b`, `signal` | Labelled min, mean, max and median for both sessions plus `delta_b_minus_a` |
 | `query_ride_history` | `start_date`, `end_date` (ISO 8601 date or timestamp) | Sessions inside the inclusive range sorted by `created_utc`, with `count`, `total_packet_count`, `mean_loss_percent`, a status histogram and each session's stored class-B `ride` scalars; sessions with a missing or unparseable `created_utc` are returned under `undated` |
 | `get_ride_summary` | `session_id` | The stored class-B ride summary of one session: scalars (name, value, unit, status, flag) and binned signals (axes, cells), exactly as `vehicle-server` computed and stored them |
-| `list_fault_catalog` | `subsystem` (optional) | The displayable fault catalog entries in compact form: `id`, `subsystem`, `root_cause`, `severity`, `advise_stop`, `detectable_now`, symptom summary. Lookup only, never a diagnosis; unconfirmed entries are never requested |
+| `list_fault_catalog` | `subsystem` (optional) | The displayable fault catalog entries in compact form: `id`, `subsystem`, `root_cause`, `severity`, `advise_stop`, `detectable_now`, `active: false`, symptom summary; the result is `kind: catalog_reference`, `active: false`. Lookup only, never a diagnosis; unconfirmed entries are never requested |
 | `get_fault` | `fault_id` | One displayable catalog entry in full, including `rider_text`, `action` and `sources`. A 404 (older server without `/faults`, unknown or unconfirmed entry) is answered as `available: false` with the reason |
+| `get_data_card` | `topic`, `session_id` (optional) | The ride's numbers for a topic (`coolant`, `battery`, `idle`, `speed`, `rpm`, `throttle`, `fuel`, `stops`, `gears`, `ride`): per matching signal the labelled min, mean, max and last value, plus matching stored ride scalars (ride time, distance, ...), the ride id and its date. Latest ride when `session_id` is omitted. Signals are picked by substring from the names the server reports for that ride |
+| `check_symptom` | `complaint`, `session_id` (optional), `locale` (default `en`) | Up to three catalog entries whose complaint phrases overlap the rider's words (English phrases, plus the locale's phrases for another `locale`): `id`, `subsystem`, `root_cause`, `severity`, `advise_stop`, `detectable_now`, `needs`, `rider_text`, `action`, `match_score`; for entries with `needs`, the labelled values of those signals in the chosen or latest ride and `moved_as_catalog` (did the ride's trend match the catalog symptom direction); for entries nothing can measure (`engine_mechanical`), `measurable: false` with a note. `diagnosis` is always `false` |
 
 A date-only bound covers the whole UTC day; a full timestamp is an exact instant, and one without an
 offset is taken as UTC. The result echoes the bounds it used as `start_utc` and `end_utc`.
@@ -90,6 +92,32 @@ server's `skipped` count is added. Undated sessions get no ride scalars (`/rides
 listed once under the top-level `dropped_position_names`. An older server without `/rides`, or any
 `/rides` error, keeps today's session output and adds `ride_scalars: "unavailable"` with the
 reason instead of failing the query.
+
+### Result shape for small models
+
+The tool descriptions are at most 160 characters and the argument descriptions at most 80, so the
+12 tool specs (name, description, input schema) stay at about 3.2k characters for a 4k-context
+model, down from 6.3k for 10 tools; a test fails above 3500. Optional arguments are plain types
+and not required, and `get_data_card`'s `topic` is an enum.
+
+Every number a tool measures or computes is one **labelled quantity**, a flat object with the same
+four keys everywhere (`compute_signal_stats`, `compare_sessions`, `get_data_card`, `check_symptom`):
+
+```json
+{"name": "ride_duration", "unit": "s", "value": 1115.83, "label": "ride duration"}
+```
+
+`name` is a stable snake_case id (`engine_speed_mean`, `engine_speed_mean_delta`), `label` a plain
+phrase (`engine speed average`), `unit` the server-reported unit, and `value` is rounded at the
+source (2 decimals, or 3 significant digits below 1). The model should quote a number only with
+its label and unit. Stored ride scalars from `get_ride_summary` and `/rides` keep the server's own
+`name`/`unit`/`value` entries unchanged. `structuredContent` is the same JSON.
+
+Catalog results are references, not findings: `list_fault_catalog` returns `kind:
+"catalog_reference"`, `active: false` (also on each entry) and a note that the faults are possible,
+not detected; `check_symptom` returns `kind: "symptom_check"` and `diagnosis: false`. When the
+catalog has no complaint phrases (a server before vehicle-defs v0.32.0) or nothing matches,
+`check_symptom` returns `matched: []` with a `reason`.
 
 `get_ride_summary` treats one session as one ride. The values are computed once by
 `vehicle-server` from vehicle-defs definitions; the tool never recomputes, rebins, converts,

@@ -10,6 +10,7 @@ from . import __version__
 from .client import VehicleServerClient
 from .config import ConfigError, load_settings
 from .source import HistorySource
+from .specs import apply_specs
 from .tools import VehicleTools
 
 INSTRUCTIONS = (
@@ -43,8 +44,11 @@ def build_server(source: HistorySource) -> MCPServer:
         tools.get_ride_summary,
         tools.list_fault_catalog,
         tools.get_fault,
+        tools.get_data_card,
+        tools.check_symptom,
     ):
         server.tool()(tool)
+    apply_specs(server)
     return server
 
 

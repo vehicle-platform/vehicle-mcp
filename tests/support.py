@@ -82,6 +82,26 @@ GPS_LATITUDE: dict[str, Any] = {
     "v": [41.0, 41.1, 41.2],
 }
 
+COOLANT_TEMP: dict[str, Any] = {
+    "name": "did.COOLANT_TEMP",
+    "kind": "did",
+    "unit": "degC",
+    "points_total": 8,
+    "downsampled": False,
+    "t_ms": [0, 100, 200, 300, 400, 500, 600, 700],
+    "v": [80.0, 82.0, 85.0, 90.0, 95.0, 100.0, 104.0, 108.123],
+}
+
+BATTERY_VOLTAGE: dict[str, Any] = {
+    "name": "did.BATTERY_VOLTAGE",
+    "kind": "did",
+    "unit": "V",
+    "points_total": 8,
+    "downsampled": False,
+    "t_ms": [0, 100, 200, 300, 400, 500, 600, 700],
+    "v": [13.8, 13.8, 13.8, 13.8, 13.8, 13.8, 13.8, 13.8],
+}
+
 SERIES_BY_SESSION: dict[str, list[dict[str, Any]]] = {
     "s1": [ENGINE_SPEED, LEAN_ANGLE, HAND, GPS_LATITUDE],
     "s2": [ENGINE_SPEED_B, GPS_LATITUDE],
@@ -89,7 +109,13 @@ SERIES_BY_SESSION: dict[str, list[dict[str, Any]]] = {
     "down": [DOWNSAMPLED, GPS_LATITUDE],
     "empty": [EMPTY],
     "clean": [ENGINE_SPEED],
+    "hot": [ENGINE_SPEED, COOLANT_TEMP, BATTERY_VOLTAGE, GPS_LATITUDE],
 }
+
+HOT_SESSIONS: list[dict[str, Any]] = [
+    {"session_id": "s1", "created_utc": "2026-10-01T10:00:00Z"},
+    {"session_id": "hot", "created_utc": "2026-10-05T10:00:00Z"},
+]
 
 RIDE_SESSIONS: list[dict[str, Any]] = [
     {
@@ -143,6 +169,35 @@ RIDE_SESSIONS: list[dict[str, Any]] = [
 ]
 
 SUMMARY_BY_SESSION: dict[str, dict[str, Any]] = {
+    "hot": {
+        "session_id": "hot",
+        "ride_definition": "session",
+        "defs_version": "vtest",
+        "signals": [
+            {
+                "name": "ride_time",
+                "status": "computed",
+                "unit": "s",
+                "kind": "scalar",
+                "value": 3601.456,
+            },
+            {
+                "name": "ride_distance",
+                "status": "computed",
+                "unit": "km",
+                "kind": "scalar",
+                "value": 42.5,
+            },
+            {
+                "name": "ride_stop_count",
+                "status": "computed",
+                "unit": "count",
+                "kind": "scalar",
+                "value": 3,
+            },
+            {"name": "ride_fuel_used", "status": "missing_inputs", "missing": ["did.X"]},
+        ],
+    },
     "s1": {
         "session_id": "s1",
         "ride_definition": "session",
@@ -273,8 +328,10 @@ FAULT_ENTRY: dict[str, Any] = {
     "id": "F-TEST-01",
     "subsystem": "cooling",
     "root_cause": "synthetic coolant loss",
+    "complaints": ["engine overheating", "temperature gauge too high", "coolant smell"],
+    "complaints_i18n": {"zz": ["motu hotta", "gauga highu"]},
     "symptoms": [
-        {"signal": "did.COOLANT_TEMP", "direction": "rising", "condition": "at idle"},
+        {"signal": "did.COOLANT_TEMP", "direction": "up", "condition": "at idle"},
         {"signal": "did.ENGINE_SPEED", "direction": "stable"},
     ],
     "needs": ["did.COOLANT_TEMP"],
@@ -287,6 +344,26 @@ FAULT_ENTRY: dict[str, Any] = {
     "sources": [{"ref": "synthetic", "confidence": "high"}],
     "displayable": True,
 }
+
+
+MECH_ENTRY: dict[str, Any] = {
+    "id": "F-TEST-ENG",
+    "subsystem": "engine_mechanical",
+    "root_cause": "synthetic valve clearance too loose",
+    "complaints": ["valves make a noise", "ticking noise from the top of the engine"],
+    "complaints_i18n": {"zz": ["valvu zonk", "topu tikka"]},
+    "symptoms": [],
+    "needs": [],
+    "rating": {"severity": 5, "occurrence": 5, "detectability": 9},
+    "detectable_now": False,
+    "advise_stop": False,
+    "rider_text": "A ticking from the top of the engine can mean loose valve clearance.",
+    "action": "check the oil level, then have the valve clearance inspected",
+    "sources": [{"ref": "synthetic", "confidence": "medium"}],
+    "displayable": True,
+}
+
+FAULT_ENTRIES: list[dict[str, Any]] = [FAULT_ENTRY, MECH_ENTRY]
 
 
 class FakeVehicleServer:
@@ -307,6 +384,7 @@ class FakeVehicleServer:
         self.supports_rides = supports_rides
         self.rides_error = rides_error
         self.supports_faults = supports_faults
+        self.fault_entries = copy.deepcopy(FAULT_ENTRIES)
         self.summaries = copy.deepcopy(SUMMARY_BY_SESSION)
         self.rides_payload = copy.deepcopy(RIDES_PAYLOAD)
 
@@ -353,9 +431,9 @@ class FakeVehicleServer:
             return httpx.Response(404, json={"detail": "Not Found"})
         if len(parts) == 1:
             subsystem = request.url.params.get("subsystem")
-            if subsystem not in {None, "cooling", "brakes"}:
+            if subsystem not in {None, "cooling", "brakes", "engine_mechanical"}:
                 return httpx.Response(422, json={"detail": f"unknown subsystem: {subsystem}"})
-            entries = [FAULT_ENTRY] if subsystem in {None, "cooling"} else []
+            entries = [e for e in self.fault_entries if subsystem in {None, e["subsystem"]}]
             return httpx.Response(
                 200, json={"defs_version": "vtest", "vehicle": "cl250", "entries": entries}
             )
