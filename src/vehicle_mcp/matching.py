@@ -6,11 +6,14 @@ substrings of names the server reports; complaint phrases come from the fault ca
 
 from __future__ import annotations
 
+import functools
+import json
 import math
 import re
 import statistics
 import unicodedata
 from collections.abc import Iterable, Sequence
+from importlib import resources
 
 # Canonical topic -> (words that select it, substrings of server-reported names to include,
 # substrings to exclude). Topic words are English; locale keyword tables are the caller's job.
@@ -67,12 +70,13 @@ def name_matches(topic: str, name: str) -> bool:
     return any(part in low for part in include) and not any(part in low for part in exclude)
 
 
-_STOPWORDS = frozenset(
-    "a an the is are was were be it its my me i we you your of on in at to for from with "
-    "and or but that this there something anything wrong problem normal bike motorcycle "
-    "motor does do did has have had can could when while sometimes".split()
-)
 _TURKISH_FOLD = str.maketrans({"\u0131": "i", "\u0130": "i", "\u00df": "ss"})
+
+STEM_MIN_PREFIX = 3  # common prefix of two equivalent tokens: at least this many characters ...
+STEM_MIN_RATIO = 0.6  # ... and at least this share of the shorter token
+TYPO_MIN_LENGTH = 5  # typo tolerance only for tokens of at least this length ...
+TYPO_MAX_SHORT = 7  # ... and when the shorter token is at most this long (a stem, not a long word)
+TYPO_WINDOW = 5  # edit distance is measured on this many leading characters
 
 
 def normalise(text: str) -> str:
@@ -82,31 +86,122 @@ def normalise(text: str) -> str:
     return re.sub(r"[^0-9a-z]+", " ", stripped).strip()
 
 
-def tokens(text: str) -> list[str]:
-    return [t for t in normalise(text).split() if t not in _STOPWORDS]
+@functools.cache
+def stopwords(locale: str) -> frozenset[str]:
+    """Filler words of one locale from `locales/<locale>.json`, folded like the text.
+
+    An unknown or malformed locale has no stopwords. The locale code is reduced to letters
+    first, so it can never address another file.
+    """
+    code = re.sub(r"[^a-z]", "", locale.casefold())
+    if not code:
+        return frozenset()
+    try:
+        raw = (resources.files("vehicle_mcp") / "locales" / f"{code}.json").read_text("utf-8")
+        words = json.loads(raw).get("stopwords", [])
+    except (OSError, ValueError, AttributeError):
+        return frozenset()
+    return frozenset(normalise(w) for w in words if isinstance(w, str))
 
 
-def _same(a: str, b: str) -> bool:
+def active_stopwords(locales: Sequence[str]) -> frozenset[str]:
+    """English is always applied, together with every requested locale."""
+    result = set(stopwords("en"))
+    for locale in locales:
+        result |= stopwords(locale)
+    return frozenset(result)
+
+
+def tokens(text: str, locales: Sequence[str] = ()) -> list[str]:
+    """Content tokens of a text: folded, split, filler words of the active locales dropped."""
+    drop = active_stopwords(locales)
+    return [t for t in normalise(text).split() if t not in drop]
+
+
+def _within_one_edit(a: str, b: str) -> bool:
     if a == b:
         return True
+    if abs(len(a) - len(b)) > 1:
+        return False
+    if len(a) == len(b):
+        return sum(x != y for x, y in zip(a, b, strict=True)) == 1
     short, long_ = sorted((a, b), key=len)
-    return len(short) >= 4 and long_.startswith(short)
+    i = 0
+    while i < len(short) and short[i] == long_[i]:
+        i += 1
+    return short[i:] == long_[i + 1 :]
 
 
-def phrase_score(complaint: Sequence[str], phrase: Sequence[str]) -> float:
-    """Dice overlap of two token lists (prefix-tolerant); 0.0 when nothing is shared."""
-    if not complaint or not phrase:
+def same(a: str, b: str) -> bool:
+    """Language-agnostic token equivalence: equal, shared stem, or a one-character typo.
+
+    Stem: the common prefix is at least 3 characters and 60 % of the shorter token (so
+    "noise"/"noises" and a stem plus any suffix match). Typo: both tokens have at least
+    5 characters (the shorter at most 7, so two long words that merely share a start do not
+    match), the same first character, and their first 5 characters differ by at most one
+    edit (substitution, insertion or deletion).
+    """
+    if a == b:
+        return True
+    short = min(len(a), len(b))
+    prefix = 0
+    while prefix < short and a[prefix] == b[prefix]:
+        prefix += 1
+    if prefix >= STEM_MIN_PREFIX and prefix >= STEM_MIN_RATIO * short:
+        return True
+    if TYPO_MIN_LENGTH <= short <= TYPO_MAX_SHORT and a[0] == b[0]:
+        return _within_one_edit(a[:TYPO_WINDOW], b[:TYPO_WINDOW])
+    return False
+
+
+class PhraseIndex:
+    """Token weights over the complaint phrases of the active locale(s) in one catalog.
+
+    A token's weight is `log(1 + N / df)` (N phrases, df of them containing the token), so
+    words every phrase uses ("noise", "engine") count less than rare, telling ones.
+    """
+
+    def __init__(self, phrases: Iterable[str], locales: Sequence[str] = ()) -> None:
+        self.locales = tuple(locales)
+        token_sets = [set(tokens(p, self.locales)) for p in phrases]
+        token_sets = [t for t in token_sets if t]
+        count = len(token_sets)
+        df: dict[str, int] = {}
+        for token_set in token_sets:
+            for token in token_set:
+                df[token] = df.get(token, 0) + 1
+        self.weights = {t: math.log(1 + count / n) for t, n in df.items()}
+
+    def weight(self, token: str) -> float:
+        # A token the index never saw (cannot happen for catalog phrases) counts as rare.
+        return self.weights.get(token, math.log(2))
+
+
+def phrase_score(complaint: Sequence[str], phrase: Sequence[str], index: PhraseIndex) -> float:
+    """Weighted share of the phrase's content tokens that the complaint covers, 0..1.
+
+    The complaint's extra words are free (a long question is not punished). At least one
+    covered token must weigh at least the median weight of the phrase's own tokens, so a
+    match made only of the phrase's commonest words ("engine", "starts") scores 0.0.
+    """
+    wanted = set(phrase)
+    if not complaint or not wanted:
         return 0.0
-    shared = sum(1 for p in set(phrase) if any(_same(p, c) for c in set(complaint)))
-    return 2 * shared / (len(set(phrase)) + len(set(complaint)))
+    covered = [p for p in wanted if any(same(p, c) for c in set(complaint))]
+    median = statistics.median(index.weight(p) for p in wanted)
+    if not covered or max(index.weight(p) for p in covered) < median:
+        return 0.0
+    return sum(index.weight(p) for p in covered) / sum(index.weight(p) for p in wanted)
 
 
-def best_phrase(complaint: str, phrases: Iterable[str]) -> tuple[float, str | None]:
-    """The best Dice score of a complaint against catalog phrases, with the phrase."""
-    c_tokens = tokens(complaint)
+def best_phrase(
+    complaint: str, phrases: Iterable[str], index: PhraseIndex
+) -> tuple[float, str | None]:
+    """The best coverage score of a complaint against catalog phrases, with the phrase."""
+    c_tokens = tokens(complaint, index.locales)
     best, best_text = 0.0, None
     for phrase in phrases:
-        score = phrase_score(c_tokens, tokens(phrase))
+        score = phrase_score(c_tokens, tokens(phrase, index.locales), index)
         if score > best:
             best, best_text = score, phrase
     return best, best_text

@@ -193,7 +193,7 @@ _SYMPTOM_NOTE = (
 MAX_CARD_SIGNALS = 4
 MAX_CARD_NAMES = 20
 MAX_SYMPTOM_MATCHES = 3
-MATCH_THRESHOLD = 0.4
+MATCH_THRESHOLD = 0.55
 TREND_POINTS = 200
 
 
@@ -947,9 +947,12 @@ class VehicleTools:
                 "(vehicle-defs v0.32.0 or newer is needed); try list_fault_catalog",
             }
 
+        phrase_index = matching.PhraseIndex(
+            [p for _, phrases in phrased for p in phrases], ("en", lang)
+        )
         scored: list[tuple[float, str, dict[str, Any], str | None]] = []
         for entry, phrases in phrased:
-            score, phrase = matching.best_phrase(text, phrases)
+            score, phrase = matching.best_phrase(text, phrases, phrase_index)
             if score >= MATCH_THRESHOLD:
                 scored.append((score, str(entry.get("id")), entry, phrase))
         scored.sort(key=lambda item: (-item[0], item[1]))

@@ -170,7 +170,7 @@ def test_check_symptom_returns_at_most_three_ordered_matches() -> None:
         server.fault_entries.append(extra)
     client = _client(server)
     try:
-        matched = VehicleTools(client).check_symptom("noise")["matched"]
+        matched = VehicleTools(client).check_symptom("noise number 0 1 2 3 4")["matched"]
     finally:
         client.close()
     assert len(matched) == 3
@@ -331,3 +331,88 @@ def test_data_card_for_a_named_ride_not_in_the_index_has_no_date(hot: VehicleToo
     assert "no recorded signal" in card["reason"]
     assert hot.get_data_card("coolant", session_id="hot")["ride_date"] == "2026-10-05T10:00:00Z"
     assert hot.get_data_card("rpm", session_id="s2")["ride_date"] is None
+
+
+# --- multilingual matcher (stems, typos, stopwords, IDF weighting) -------------------------
+# Turkish-like morphology is simulated with English stems plus synthetic suffixes, so the
+# tests stay English only (D-125).
+
+SYNTHETIC_PHRASES = {
+    "valve": ["valves xyz noise", "valvesxyz tick"],
+    "cool": ["engine overheating", "coolant boiling over"],
+    "chain": ["chain xyz noise", "chain is loose"],
+    "bat": ["battery goes flat", "battery will not hold charge"],
+}
+
+
+def _index(locale: str = "xx") -> matching.PhraseIndex:
+    return matching.PhraseIndex(
+        [p for ps in SYNTHETIC_PHRASES.values() for p in ps], ("en", locale)
+    )
+
+
+def _best(complaint: str) -> tuple[str, float]:
+    index = _index()
+    scores = {
+        key: matching.best_phrase(complaint, phrases, index)[0]
+        for key, phrases in SYNTHETIC_PHRASES.items()
+    }
+    key = max(scores, key=lambda k: scores[k])
+    return key, scores[key]
+
+
+def test_same_stems_typos_and_negatives() -> None:
+    assert matching.same("noise", "noisexyz")  # stem plus suffix
+    assert matching.same("sesi", "ses")  # 3 shared characters, 100 % of the shorter token
+    assert matching.same("valve", "valvesxyzdan")
+    assert matching.same("subap", "supap")  # one substitution
+    assert matching.same("supap", "subaplarimdan")  # typo on the first five characters
+    assert matching.same("valve", "valv")  # deletion
+    assert not matching.same("noise", "number")
+    assert not matching.same("light", "right")  # different first character
+    assert not matching.same("overheating", "overfilled")  # long words sharing a start
+    assert not matching.same("ab", "abc")  # prefix below 3 characters
+    assert not matching.same("valves", "valxyz")  # prefix below 60 % of the shorter
+
+
+def test_stopwords_come_from_locale_files() -> None:
+    assert "the" in matching.stopwords("en")
+    assert matching.stopwords("en-GB") == matching.stopwords("engb")  # letters only
+    assert matching.stopwords("../../etc") == frozenset()
+    assert matching.stopwords("zz") == frozenset()  # unknown locale: no filler words
+    assert matching.stopwords("") == frozenset()
+    turkish = matching.stopwords("tr")
+    assert {"bir", "mi", "cok", "sikinti", "sorun"} <= turkish  # folded like the text
+    assert matching.tokens("Is there a problem?", ("tr",)) == []
+    assert matching.tokens("bir sorun var mi valve", ("tr",)) == ["valve"]
+    assert matching.tokens("bir sorun var mi valve", ()) == ["bir", "sorun", "var", "mi", "valve"]
+
+
+def test_idf_matcher_on_synthetic_morphology() -> None:
+    assert _best("valvesxyzdan make noise, is something wrong?")[0] == "valve"
+    key, score = _best("my engine is overheating a lot, what should I do?")
+    assert key == "cool"
+    assert score >= 0.55
+    assert _best("chains xyz noise")[0] == "chain"
+
+
+def test_long_complaints_are_not_punished_and_common_words_are_not_enough() -> None:
+    long_one = "valves xyz noise " + "while riding on the highway every morning " * 3
+    assert _best(long_one)[1] == 1.0
+    assert _best("noise")[1] < 0.55  # a word shared by several phrases
+    assert _best("engine")[1] < 0.55
+    assert _best("the weather forecast")[1] == 0.0
+    assert matching.phrase_score([], ["valve"], _index()) == 0.0
+    assert matching.phrase_score(["valve"], [], _index()) == 0.0
+
+
+def test_rare_words_weigh_more_than_frequent_ones() -> None:
+    index = _index()
+    assert index.weight("tick") > index.weight("noise")
+    assert index.weight("unseen") > 0
+    assert matching.PhraseIndex([]).weights == {}
+
+
+def test_check_symptom_matches_inflected_locale_words(hot: VehicleTools) -> None:
+    result = hot.check_symptom("valvuxyzdan zonk geliyor, is there a problem?", locale="zz")
+    assert result["matched"][0]["id"] == "F-TEST-ENG"
