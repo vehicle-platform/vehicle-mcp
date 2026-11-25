@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import json
+from typing import Any
 
 import httpx
 import pytest
@@ -218,19 +219,46 @@ def test_get_timeseries_slice_rejects_position_signal(
     assert len(fake_server.requests) == 1
 
 
+def _values(block: dict[str, Any]) -> dict[str, Any]:
+    """Name -> value of a result's labelled quantities."""
+    return {q["name"]: q["value"] for q in block["values"]}
+
+
 def test_compute_signal_stats_hand_computed(tools: VehicleTools) -> None:
     stats = tools.compute_signal_stats("s1", "did.HAND")
-    assert stats["count"] == 8
-    assert stats["min"] == 2
-    assert stats["max"] == 9
-    assert stats["mean"] == pytest.approx(5.0)
-    assert stats["std"] == pytest.approx(2.0)
-    assert stats["p05"] == pytest.approx(2.7)
-    assert stats["p50"] == pytest.approx(4.5)
-    assert stats["p95"] == pytest.approx(8.3)
-    assert stats["duration_ms"] == 700
+    values = _values(stats)
+    assert stats["samples"]["value"] == 8
+    assert values["hand_min"] == 2
+    assert values["hand_max"] == 9
+    assert values["hand_mean"] == pytest.approx(5.0)
+    assert values["hand_std"] == pytest.approx(2.0)
+    assert values["hand_p05"] == pytest.approx(2.7)
+    assert values["hand_p50"] == pytest.approx(4.5)
+    assert values["hand_p95"] == pytest.approx(8.3)
+    assert stats["duration"]["value"] == pytest.approx(0.7)
+    assert stats["duration"]["unit"] == "s"
     assert stats["unit"] == "count"
-    assert stats["approximate_reason"] is None
+    assert "approximate_reason" not in stats
+
+
+def test_every_stats_number_is_labelled_with_name_and_unit(tools: VehicleTools) -> None:
+    stats = tools.compute_signal_stats("s1", "did.ENGINE_SPEED")
+    quantities = [*stats["values"], stats["samples"], stats["duration"]]
+    for q in quantities:
+        assert list(q) == ["name", "unit", "value", "label"]
+        assert q["name"] and q["label"] and q["unit"]
+    mean = next(q for q in stats["values"] if q["name"] == "engine_speed_mean")
+    assert mean == {
+        "name": "engine_speed_mean",
+        "unit": "rpm",
+        "value": 3000,
+        "label": "engine speed average",
+    }
+
+
+def test_stats_are_rounded_at_the_source(tools: VehicleTools) -> None:
+    values = _values(tools.compute_signal_stats("s1", "derived.LEAN_ANGLE"))
+    assert values["lean_angle_std"] == 7.48  # 7.483314... rounded to 2 decimals
 
 
 def test_compute_signal_stats_requests_exact_stats_route(
@@ -248,38 +276,32 @@ def test_compute_signal_stats_requests_exact_stats_route(
 
 def test_compute_signal_stats_uses_exact_stats_without_approximation(tools: VehicleTools) -> None:
     stats = tools.compute_signal_stats("down", "did.DOWNSAMPLED")
-    assert stats["count"] == 10_000
-    assert stats["min"] == 1
-    assert stats["max"] == 9
-    assert stats["mean"] == pytest.approx(5.0)
-    assert stats["std"] == pytest.approx(4.0)
-    assert stats["p05"] == pytest.approx(1.4)
-    assert stats["p50"] == pytest.approx(5.0)
-    assert stats["p95"] == pytest.approx(8.6)
-    assert stats["duration_ms"] == 1000
-    assert stats["approximate_reason"] is None
+    values = _values(stats)
+    assert stats["samples"]["value"] == 10_000
+    assert values["downsampled_min"] == 1
+    assert values["downsampled_max"] == 9
+    assert values["downsampled_mean"] == pytest.approx(5.0)
+    assert values["downsampled_std"] == pytest.approx(4.0)
+    assert values["downsampled_p05"] == pytest.approx(1.4)
+    assert values["downsampled_p50"] == pytest.approx(5.0)
+    assert values["downsampled_p95"] == pytest.approx(8.6)
+    assert stats["duration"]["value"] == 1
+    assert "approximate_reason" not in stats
 
 
 def test_compute_signal_stats_falls_back_for_old_server(old_tools: VehicleTools) -> None:
     stats = old_tools.compute_signal_stats("down", "did.DOWNSAMPLED")
-    assert stats["count"] == 10_000
-    assert stats["min"] == 1
-    assert stats["max"] == 9
-    assert stats["mean"] is None
-    assert stats["std"] is None
-    assert stats["p05"] is None
-    assert stats["p50"] is None
-    assert stats["p95"] is None
+    values = _values(stats)
+    assert stats["samples"]["value"] == 10_000
+    assert values == {"downsampled_min": 1, "downsampled_max": 9}
     assert "downsampled" in stats["approximate_reason"]
 
 
 def test_compute_signal_stats_empty_series(tools: VehicleTools) -> None:
     stats = tools.compute_signal_stats("empty", "did.EMPTY")
-    assert stats["count"] == 0
-    assert stats["min"] is None
-    assert stats["max"] is None
-    assert stats["mean"] is None
-    assert stats["duration_ms"] == 0
+    assert stats["samples"]["value"] == 0
+    assert stats["values"] == []
+    assert stats["duration"]["value"] == 0
 
 
 def test_compute_signal_stats_rejects_position(tools: VehicleTools) -> None:
@@ -291,31 +313,31 @@ def test_compare_sessions_reports_b_minus_a_deltas(tools: VehicleTools) -> None:
     result = tools.compare_sessions("s1", "s2", "did.ENGINE_SPEED")
     assert result["session_a"]["session_id"] == "s1"
     assert result["session_b"]["session_id"] == "s2"
-    assert result["delta"]["min"] == 500
-    assert result["delta"]["max"] == 500
-    assert result["delta"]["mean"] == pytest.approx(500)
-    assert result["delta"]["p50"] == pytest.approx(500)
-    assert result["delta"]["std"] == pytest.approx(0)
-    assert result["delta"]["count"] == 0
-    assert result["delta"]["duration_ms"] == 0
+    delta = _values({"values": result["delta_b_minus_a"]})
+    assert delta == {
+        "engine_speed_min_delta": 500,
+        "engine_speed_mean_delta": 500,
+        "engine_speed_max_delta": 500,
+        "engine_speed_p50_delta": 500,
+    }
+    assert _values(result["session_a"])["engine_speed_mean_a"] == 3000
+    assert _values(result["session_b"])["engine_speed_mean_b"] == 3500
+    assert all(q["unit"] == "rpm" for q in result["delta_b_minus_a"])
 
 
 def test_compare_sessions_uses_exact_stats(tools: VehicleTools) -> None:
     result = tools.compare_sessions("down", "down", "did.DOWNSAMPLED")
-    assert result["delta"]["min"] == 0
-    assert result["delta"]["max"] == 0
-    assert result["delta"]["mean"] == pytest.approx(0.0)
-    assert result["session_a"]["mean"] == pytest.approx(5.0)
-    assert result["session_a"]["approximate_reason"] is None
+    delta = _values({"values": result["delta_b_minus_a"]})
+    assert delta["downsampled_min_delta"] == 0
+    assert delta["downsampled_mean_delta"] == pytest.approx(0.0)
+    assert _values(result["session_a"])["downsampled_mean_a"] == pytest.approx(5.0)
 
 
 def test_compare_sessions_falls_back_for_old_server(old_tools: VehicleTools) -> None:
     result = old_tools.compare_sessions("down", "down", "did.DOWNSAMPLED")
-    assert result["delta"]["min"] == 0
-    assert result["delta"]["max"] == 0
-    assert "mean" not in result["delta"]
-    assert result["session_a"]["mean"] is None
-    assert "downsampled" in result["session_a"]["approximate_reason"]
+    delta = _values({"values": result["delta_b_minus_a"]})
+    assert delta == {"downsampled_min_delta": 0, "downsampled_max_delta": 0}
+    assert "downsampled_mean_a" not in _values(result["session_a"])
 
 
 def test_compare_sessions_rejects_unit_mismatch(tools: VehicleTools) -> None:

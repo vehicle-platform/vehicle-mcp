@@ -101,7 +101,9 @@ def test_tools_run_on_any_history_source() -> None:
     assert "\nsynthetic\n" in tools.get_session_report("mem-1", format="text")
     assert [s["name"] for s in tools.list_series("mem-1")["series"]] == ["derived.sample"]
     stats = tools.compute_signal_stats("mem-1", "derived.sample")
-    assert (stats["mean"], stats["min"], stats["max"], stats["duration_ms"]) == (2.5, 1.0, 4.0, 300)
+    values = {q["name"]: q["value"] for q in stats["values"]}
+    assert (values["sample_mean"], values["sample_min"], values["sample_max"]) == (2.5, 1.0, 4.0)
+    assert stats["duration"]["value"] == 0.3
 
 
 def test_query_ride_history_runs_on_any_history_source() -> None:

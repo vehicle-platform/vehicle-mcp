@@ -8,6 +8,7 @@ GET requests only and turns expected failures into ToolError messages.
 from __future__ import annotations
 
 import json
+import re
 import statistics
 from collections import Counter
 from collections.abc import Callable
@@ -16,7 +17,7 @@ from typing import Any, Literal
 
 from mcp.server.mcpserver.exceptions import ToolError
 
-from . import untrusted
+from . import matching, untrusted
 from .position import is_position_name
 from .source import (
     FaultNotAvailable,
@@ -122,10 +123,78 @@ def _number(value: Any) -> int | float | None:
     return value
 
 
+def _round(value: Any) -> Any:
+    """Round a measured number at the source: 2 decimals, or 3 significant digits when tiny."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return value
+    if isinstance(value, int) or value == 0 or abs(value) >= 1:
+        return round(value, 2)
+    return float(f"{value:.3g}")
+
+
+def _slug(signal: str) -> str:
+    """A snake_case name from a server-reported signal name (`did.ENGINE_SPEED` -> engine_speed)."""
+    base = signal.rsplit(".", 1)[-1].lower()
+    return re.sub(r"[^a-z0-9]+", "_", base).strip("_") or "signal"
+
+
+def _human(signal: str) -> str:
+    """A plain label from a server-reported signal name (`did.ENGINE_SPEED` -> engine speed)."""
+    return _slug(signal).replace("_", " ")
+
+
+def quantity(name: str, label: str, unit: str | None, value: Any) -> dict[str, Any]:
+    """The one labelled shape of every measured number in a tool result."""
+    return {"name": name, "unit": unit, "value": _round(value), "label": label}
+
+
+_STAT_WORDS = {
+    "min": "minimum",
+    "max": "maximum",
+    "mean": "average",
+    "p50": "median",
+    "p05": "5th percentile",
+    "p95": "95th percentile",
+    "std": "standard deviation",
+    "last": "last value",
+}
+_RESULT_STATS = ("min", "mean", "max", "p05", "p50", "p95", "std")
+_COMPARE_STATS = ("min", "mean", "max", "p50")
+
+
+def _stat_quantities(
+    signal: str, unit: str | None, raw: dict[str, Any], keys: tuple[str, ...], suffix: str = ""
+) -> list[dict[str, Any]]:
+    slug, label = _slug(signal), _human(signal)
+    return [
+        quantity(
+            f"{slug}_{key}{suffix}",
+            f"{label} {_STAT_WORDS[key]}" + (f" ({suffix[1:]})" if suffix else ""),
+            unit,
+            raw[key],
+        )
+        for key in keys
+        if raw.get(key) is not None
+    ]
+
+
 _FAULT_NOTE = (
     "Catalog lookup only, not a diagnosis. If advise_stop is true, tell the rider to stop "
     "safely and have the motorcycle inspected; never say that riding on is safe (D-084)."
 )
+
+
+_CATALOG_NOTE = "These are possible faults listed in the catalog, not faults detected on this bike."
+
+
+_SYMPTOM_NOTE = (
+    "Possible causes matched from the catalog by the rider's words; none is confirmed present."
+)
+MAX_CARD_SIGNALS = 4
+MAX_CARD_NAMES = 20
+MAX_SYMPTOM_MATCHES = 3
+MATCH_THRESHOLD = 0.4
+TREND_POINTS = 200
 
 
 def _symptom_summary(symptom: Any) -> str:
@@ -147,6 +216,7 @@ def _compact_fault(entry: dict[str, Any]) -> dict[str, Any]:
         "severity": rating.get("severity") if isinstance(rating, dict) else None,
         "advise_stop": entry.get("advise_stop"),
         "detectable_now": entry.get("detectable_now"),
+        "active": False,
         "symptoms": (
             "; ".join(_symptom_summary(s) for s in symptoms) if isinstance(symptoms, list) else ""
         ),
@@ -328,10 +398,12 @@ class VehicleTools:
             "available": True,
             "defs_version": payload.get("defs_version"),
             "vehicle": payload.get("vehicle"),
+            "kind": "catalog_reference",
+            "active": False,
             "subsystem": subsystem,
             "count": len(entries),
             "entries": entries,
-            "note": _FAULT_NOTE,
+            "note": _CATALOG_NOTE + " " + _FAULT_NOTE,
         }
 
     def get_fault(self, fault_id: str) -> dict[str, Any]:
@@ -468,17 +540,14 @@ class VehicleTools:
             "approximate_reason": None,
         }
 
-    def compute_signal_stats(
+    def _raw_stats(
         self,
         session_id: str,
         signal: str,
         start_ms: int | None = None,
         end_ms: int | None = None,
     ) -> dict[str, Any]:
-        """Compute count, min, max, mean, std, p05, p50, p95, duration_ms and unit."""
-        self._check_window(start_ms, end_ms)
-        self._ensure_known(session_id, [signal])
-
+        """Exact statistics for a signal already known to exist in the session."""
         try:
             payload = self._source.stats(
                 session_id, signals=[signal], start_ms=start_ms, end_ms=end_ms
@@ -489,32 +558,76 @@ class VehicleTools:
             raise ToolError(str(exc)) from None
         return self._stats_from_server(payload, signal)
 
-    def compare_sessions(self, session_a: str, session_b: str, signal: str) -> dict[str, Any]:
-        """Compare one signal across two sessions and report the b - a deltas.
+    def compute_signal_stats(
+        self,
+        session_id: str,
+        signal: str,
+        start_ms: int | None = None,
+        end_ms: int | None = None,
+    ) -> dict[str, Any]:
+        """Statistics of one signal as labelled quantities (see `quantity`).
 
-        Each side covers its whole session; the two rides are not aligned in time.
+        `values` holds min, mean, max, p05, p50, p95 and std (those that exist), each with
+        name, unit, value and label; `samples` and `duration_s` are labelled too.
+        `approximate_reason` appears only when the server had to downsample.
         """
-        stats_a = self.compute_signal_stats(session_a, signal)
-        stats_b = self.compute_signal_stats(session_b, signal)
+        self._check_window(start_ms, end_ms)
+        self._ensure_known(session_id, [signal])
+        raw = self._raw_stats(session_id, signal, start_ms, end_ms)
+        unit = raw["unit"]
+        slug = _slug(signal)
+        result: dict[str, Any] = {
+            "signal": signal,
+            "label": _human(signal),
+            "session_id": session_id,
+            "unit": unit,
+            "values": _stat_quantities(signal, unit, raw, _RESULT_STATS),
+            "samples": quantity(
+                f"{slug}_samples", f"{_human(signal)} samples", "count", raw["count"]
+            ),
+            "duration": quantity(
+                f"{slug}_duration", f"{_human(signal)} duration", "s", raw["duration_ms"] / 1000
+            ),
+        }
+        if raw.get("approximate_reason"):
+            result["approximate_reason"] = raw["approximate_reason"]
+        return result
+
+    def compare_sessions(self, session_a: str, session_b: str, signal: str) -> dict[str, Any]:
+        """Compare one signal across two sessions; `delta` is session_b minus session_a.
+
+        Each side covers its whole session; the two rides are not aligned in time. Every
+        number is a labelled quantity (name, unit, value, label).
+        """
+        self._ensure_known(session_a, [signal])
+        self._ensure_known(session_b, [signal])
+        stats_a = self._raw_stats(session_a, signal)
+        stats_b = self._raw_stats(session_b, signal)
 
         if stats_a["unit"] != stats_b["unit"]:
             raise ToolError(
                 f"cannot compare {signal!r}: units differ "
                 f"({stats_a['unit']!r} vs {stats_b['unit']!r})"
             )
+        unit = stats_a["unit"]
 
-        delta: dict[str, float | int] = {}
-        for key in ("count", "min", "max", "mean", "std", "p05", "p50", "p95", "duration_ms"):
-            value_a = stats_a[key]
-            value_b = stats_b[key]
-            if value_a is not None and value_b is not None:
-                delta[key] = value_b - value_a
-
+        delta: dict[str, Any] = {}
+        for key in _COMPARE_STATS:
+            if stats_a.get(key) is not None and stats_b.get(key) is not None:
+                delta[key] = stats_b[key] - stats_a[key]
         return {
             "signal": signal,
-            "session_a": {"session_id": session_a, **stats_a},
-            "session_b": {"session_id": session_b, **stats_b},
-            "delta": delta,
+            "label": _human(signal),
+            "unit": unit,
+            "session_a": {
+                "session_id": session_a,
+                "values": _stat_quantities(signal, unit, stats_a, _COMPARE_STATS, "_a"),
+            },
+            "session_b": {
+                "session_id": session_b,
+                "values": _stat_quantities(signal, unit, stats_b, _COMPARE_STATS, "_b"),
+            },
+            "delta_b_minus_a": _stat_quantities(signal, unit, delta, _COMPARE_STATS, "_delta"),
         }
 
     def _with_ride_scalars(
@@ -645,3 +758,268 @@ class VehicleTools:
             "note": _UNTRUSTED_NOTE,
         }
         return self._with_ride_scalars(result, sessions, start_date, end_date)
+
+    # -- data card and symptom check ------------------------------------------------------
+
+    def _resolve_session(self, session_id: str | None) -> tuple[str | None, str | None]:
+        """The chosen session id (or the latest ride) and its created_utc, if known."""
+        payload = self._call(self._source.sessions)
+        if not isinstance(payload, list):
+            raise ToolError("vehicle-server returned an unexpected sessions response")
+        rows = [r for r in payload if isinstance(r, dict) and isinstance(r.get("session_id"), str)]
+        if session_id is not None:
+            for row in rows:
+                if row["session_id"] == session_id:
+                    created = row.get("created_utc")
+                    return session_id, created if isinstance(created, str) else None
+            return session_id, None
+        if not rows:
+            return None, None
+        dated = [(c, r) for r in rows if (c := _parse_created(r.get("created_utc"))) is not None]
+        latest = max(dated, key=lambda item: item[0])[1] if dated else rows[0]
+        created = latest.get("created_utc")
+        return latest["session_id"], created if isinstance(created, str) else None
+
+    def _last_value(self, session_id: str, signal: str, t_last_ms: Any) -> Any:
+        """The final sample of a series (a one-instant window at its last timestamp)."""
+        window = (
+            {"from_ms": int(t_last_ms), "to_ms": int(t_last_ms)}
+            if isinstance(t_last_ms, (int, float))
+            else {}
+        )
+        payload = self._call(
+            lambda: self._source.series(
+                session_id, signals=[signal], max_points=MIN_SERIES_POINTS, **window
+            )
+        )
+        values = self._one_series(payload, signal).get("v") or []
+        return values[-1] if values else None
+
+    def _signal_card(self, session_id: str, entry: dict[str, Any]) -> dict[str, Any]:
+        """min / mean / max / last of one series as labelled quantities."""
+        name = entry["name"]
+        unit = entry.get("unit")
+        raw = self._raw_stats(session_id, name)
+        try:
+            payload = self._source.stats(session_id, signals=[name], start_ms=None, end_ms=None)
+            t_last = self._one_series(payload, name).get("t_last_ms")
+        except SourceError:
+            t_last = None
+        raw["last"] = self._last_value(session_id, name, t_last)
+        values = _stat_quantities(name, unit, raw, ("min", "mean", "max", "last"))
+        card: dict[str, Any] = {
+            "signal": name,
+            "label": _human(name),
+            "unit": unit,
+            "values": values,
+        }
+        if raw.get("approximate_reason"):
+            card["approximate_reason"] = raw["approximate_reason"]
+        return card
+
+    def get_data_card(self, topic: str, session_id: str | None = None) -> dict[str, Any]:
+        """The ride's numbers for one topic (min, mean, max, last), from the chosen or latest ride.
+
+        Topic words: coolant, battery, idle, speed, rpm, throttle, fuel, stops, gears, ride.
+        Signals are picked by substring from the names the server reports for the ride;
+        stored ride scalars (ride time, distance, ...) come from the ride summary.
+        """
+        key = matching.canonical_topic(topic)
+        if key is None:
+            return {
+                "available": False,
+                "reason": f"unknown topic {topic!r}; use one of: {', '.join(matching.TOPIC_KEYS)}",
+                "topics": list(matching.TOPIC_KEYS),
+            }
+        session, created = self._resolve_session(session_id)
+        if session is None:
+            return {"available": False, "reason": "vehicle-server has no recorded rides yet"}
+
+        _, series, _ = self._series_index(session)
+        picked = [e for e in series if matching.name_matches(key, e["name"])]
+        signals = [self._signal_card(session, e) for e in picked[:MAX_CARD_SIGNALS]]
+
+        ride_values: list[dict[str, Any]] = []
+        try:
+            summary = self._source.ride_summary(session)
+        except SourceError:
+            summary = None
+        if isinstance(summary, dict) and isinstance(summary.get("signals"), list):
+            for item in summary["signals"]:
+                name = item.get("name") if isinstance(item, dict) else None
+                if (
+                    isinstance(name, str)
+                    and not is_position_name(name)
+                    and item.get("kind") == "scalar"
+                    and _number(item.get("value")) is not None
+                    and matching.name_matches(key, name)
+                ):
+                    ride_values.append(
+                        quantity(name, name.replace("_", " "), item.get("unit"), item["value"])
+                    )
+
+        result: dict[str, Any] = {
+            "available": True,
+            "kind": "ride_data_card",
+            "topic": key,
+            "session_id": session,
+            "ride_date": created,
+            "signals": signals,
+            "ride_values": ride_values,
+            "note": "Numbers are computed by the tool over the whole ride; none is a diagnosis.",
+        }
+        if not signals and not ride_values:
+            result["reason"] = f"this ride has no recorded signal for {key}"
+            result["available_signals"] = [_human(e["name"]) for e in series[:MAX_CARD_NAMES]]
+        return result
+
+    def _need_card(
+        self, session_id: str, entry: dict[str, Any], symptoms: list[Any]
+    ) -> dict[str, Any]:
+        name = entry["name"]
+        card = self._signal_card(session_id, entry)
+        payload = self._call(
+            lambda: self._source.series(session_id, signals=[name], max_points=TREND_POINTS)
+        )
+        observed = matching.trend(self._one_series(payload, name).get("v") or [])
+        card["trend_over_ride"] = observed
+        for symptom in symptoms:
+            if isinstance(symptom, dict) and symptom.get("signal") == name:
+                card["catalog_direction"] = symptom.get("direction")
+                card["moved_as_catalog"] = matching.moved_as(symptom.get("direction"), observed)
+                break
+        return card
+
+    def _complaint_phrases(
+        self, payload: dict[str, Any], entry: dict[str, Any], locale: str
+    ) -> list[str]:
+        phrases: list[Any] = list(entry.get("complaints") or [])
+        if locale != "en":
+            per_entry = entry.get("complaints_i18n")
+            if isinstance(per_entry, dict):
+                phrases += list(per_entry.get(locale) or [])
+            top = payload.get("complaints_i18n")
+            if isinstance(top, dict) and isinstance(top.get(locale), dict):
+                phrases += list(top[locale].get(entry.get("id")) or [])
+        return [p for p in phrases if isinstance(p, str)]
+
+    def check_symptom(
+        self, complaint: str, session_id: str | None = None, locale: str = "en"
+    ) -> dict[str, Any]:
+        """Match a rider's complaint to catalog entries and check the ride data (never a diagnosis).
+
+        The complaint words are scored against each displayable catalog entry's complaint
+        phrases (English, plus the locale's phrases when locale is not en); the best three
+        are returned with their catalog text and, for entries a sensor can see, the
+        values of the needed signals in the chosen or latest ride and whether they moved
+        in the catalog's symptom direction. Entries nothing on the bike can measure say so.
+        """
+        text = complaint.strip()
+        if not text:
+            raise ToolError("complaint must not be empty")
+        lang = re.sub(r"[^a-z]", "", locale.casefold().split("-")[0].split("_")[0]) or "en"
+        base: dict[str, Any] = {
+            "kind": "symptom_check",
+            "diagnosis": False,
+            "locale": lang,
+            "note": _SYMPTOM_NOTE + " " + _FAULT_NOTE,
+        }
+        try:
+            payload = self._source.fault_catalog(subsystem=None)
+        except FaultNotAvailable as exc:
+            return {**base, "available": False, "matched": [], "reason": str(exc)}
+        except SourceError as exc:
+            raise ToolError(str(exc)) from None
+        if not isinstance(payload, dict) or not isinstance(payload.get("entries"), list):
+            raise ToolError(
+                "vehicle-server returned an unexpected fault catalog response "
+                "(expected an object with an 'entries' list)"
+            )
+
+        entries = [e for e in payload["entries"] if isinstance(e, dict)]
+        phrased = [(e, self._complaint_phrases(payload, e, lang)) for e in entries]
+        if not any(phrases for _, phrases in phrased):
+            return {
+                **base,
+                "available": True,
+                "matched": [],
+                "reason": "the fault catalog served here has no complaint phrases "
+                "(vehicle-defs v0.32.0 or newer is needed); try list_fault_catalog",
+            }
+
+        scored: list[tuple[float, str, dict[str, Any], str | None]] = []
+        for entry, phrases in phrased:
+            score, phrase = matching.best_phrase(text, phrases)
+            if score >= MATCH_THRESHOLD:
+                scored.append((score, str(entry.get("id")), entry, phrase))
+        scored.sort(key=lambda item: (-item[0], item[1]))
+        top = scored[:MAX_SYMPTOM_MATCHES]
+        if not top:
+            return {
+                **base,
+                "available": True,
+                "matched": [],
+                "reason": "no catalog entry matches these words; ask the rider to describe "
+                "the sound, smell, light or behaviour, or try get_data_card",
+            }
+
+        session: str | None = None
+        created: str | None = None
+        index: dict[str, dict[str, Any]] = {}
+        if any(entry.get("needs") for _, _, entry, _ in top):
+            session, created = self._resolve_session(session_id)
+            if session is not None:
+                _, series, _ = self._series_index(session)
+                index = {e["name"]: e for e in series}
+
+        matched = [
+            self._symptom_match(score, entry, phrase, session, index)
+            for score, _, entry, phrase in top
+        ]
+        return {
+            **base,
+            "available": True,
+            "session_id": session,
+            "ride_date": created,
+            "matched": matched,
+        }
+
+    def _symptom_match(
+        self,
+        score: float,
+        entry: dict[str, Any],
+        phrase: str | None,
+        session: str | None,
+        index: dict[str, dict[str, Any]],
+    ) -> dict[str, Any]:
+        compact = _compact_fault(entry)
+        compact.pop("symptoms", None)
+        item: dict[str, Any] = {
+            **compact,
+            "needs": [n for n in entry.get("needs") or [] if isinstance(n, str)],
+            "rider_text": entry.get("rider_text"),
+            "action": entry.get("action"),
+            "matched_phrase": phrase,
+            "match_score": quantity("match_score", "match score", "ratio", score),
+        }
+        needs = item["needs"]
+        if not needs:
+            item["measurable"] = False
+            item["measurement_note"] = (
+                "No sensor on the bike can hear or feel this, so the ride data cannot "
+                "confirm or rule it out. Follow the catalog action."
+            )
+            return item
+        raw_symptoms = entry.get("symptoms")
+        symptoms: list[Any] = raw_symptoms if isinstance(raw_symptoms, list) else []
+        cards = [
+            self._need_card(session, index[n], symptoms) for n in needs if session and n in index
+        ]
+        item["measurable"] = bool(cards)
+        item["signals"] = cards
+        missing = [n for n in needs if n not in index]
+        if missing:
+            item["missing_in_ride"] = missing
+        if not cards:
+            item["measurement_note"] = "The chosen ride has none of the signals this entry needs."
+        return item
