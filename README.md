@@ -119,6 +119,22 @@ not detected; `check_symptom` returns `kind: "symptom_check"` and `diagnosis: fa
 catalog has no complaint phrases (a server before vehicle-defs v0.32.0) or nothing matches,
 `check_symptom` returns `matched: []` with a `reason`.
 
+**How `check_symptom` matches (deterministic, pure Python, no model).** The complaint and every
+catalog phrase of the active locales (English plus the requested `locale`) are folded (case,
+diacritics, Turkish dotted/dotless i), split into words and stripped of filler words from
+`src/vehicle_mcp/locales/<locale>.json` (English is always applied; an unknown locale has no
+extra list; add a language by adding a file). `sorun`/`sıkıntı`-style words ("problem") are
+treated as filler because riders put them in the question, not in the symptom. Two words are
+equivalent when they are equal, share a stem (common prefix of at least 3 characters and 60 % of
+the shorter word, so suffixes do not matter) or are a one-character typo (both at least 5
+characters, the shorter at most 7, same first character, at most one edit in the first 5
+characters). Each phrase word weighs `log(1 + N/df)` over all phrases in the fetched catalog, so
+rare words count more than "engine" or "noise". The score is the weighted share of a phrase's
+words that the complaint covers (extra words in the complaint cost nothing), and a match needs at
+least one covered word at or above the median weight of the phrase's own words. Entries scoring
+at least 0.55 are returned, best three first. The threshold was tuned on a synthetic table in
+`tests/test_small_model.py` and checked against a live catalog.
+
 `get_ride_summary` treats one session as one ride. The values are computed once by
 `vehicle-server` from vehicle-defs definitions; the tool never recomputes, rebins, converts,
 rounds or aggregates them. A `null` value carries the server's status or flag reason in the same
