@@ -195,6 +195,10 @@ MAX_CARD_SIGNALS = 4
 MAX_CARD_NAMES = 20
 MAX_SYMPTOM_MATCHES = 3
 MATCH_THRESHOLD = 0.55
+DATA_ONLY_MIN_RATIO = 0.8  # data_only needs >= 0.8 x the best displayable score
+DATA_ONLY_MAX_ENTRIES = 2  # best unconfirmed entry, plus one within the band
+DATA_ONLY_SCORE_BAND = 0.05
+DATA_ONLY_MAX_SIGNALS = 4
 _UNCONFIRMED_REFUSED = (
     "vehicle-server did not allow unconfirmed entries for this token, so only confirmed "
     "catalog entries were matched"
@@ -1022,8 +1026,19 @@ class VehicleTools:
                 data_scored.append((score, str(entry.get("id")), entry))
         scored.sort(key=lambda item: (-item[0], item[1]))
         data_scored.sort(key=lambda item: (-item[0], item[1]))
-        data_top = [entry for _, _, entry in data_scored[:MAX_SYMPTOM_MATCHES]]
-        return scored[:MAX_SYMPTOM_MATCHES], data_top
+        top = scored[:MAX_SYMPTOM_MATCHES]
+        data_top: list[dict[str, Any]] = []
+        if data_scored:
+            best = data_scored[0][0]
+            # Noise control: data_only needs a score close to the best displayable match, and
+            # only the best unconfirmed entry (plus one within a hair of it) contributes.
+            if not top or best >= DATA_ONLY_MIN_RATIO * top[0][0]:
+                data_top = [
+                    entry
+                    for score, _, entry in data_scored[:DATA_ONLY_MAX_ENTRIES]
+                    if best - score <= DATA_ONLY_SCORE_BAND
+                ]
+        return top, data_top
 
     def _data_only_match(
         self,
@@ -1033,11 +1048,12 @@ class VehicleTools:
     ) -> dict[str, Any] | None:
         """One merged `data_only` item for unconfirmed matches (D-127 addendum): the ride's
         measured values of the entries' `needs` signals and nothing else about the entries."""
-        names: list[str] = []
+        votes: Counter[str] = Counter()
         for entry in entries:
-            for need in entry.get("needs") or []:
-                if isinstance(need, str) and need not in names:
-                    names.append(need)
+            for need in dict.fromkeys(n for n in entry.get("needs") or [] if isinstance(n, str)):
+                votes[need] += 1
+        # Most-needed first; ties keep the first entry's order (Counter preserves insertion).
+        names = [n for n, _ in votes.most_common()][:DATA_ONLY_MAX_SIGNALS]
         if not names:
             return None
         cards = [self._need_card(session, index[n], []) for n in names if session and n in index]

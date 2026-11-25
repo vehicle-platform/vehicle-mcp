@@ -271,11 +271,57 @@ def test_unconfirmed_matches_return_only_merged_measured_values() -> None:
 def test_displayable_and_unconfirmed_matches_are_returned_together() -> None:
     tools, client = _data_only_tools()
     try:
-        result = tools.check_symptom("engine overheating, gauge sluggish")
+        result = tools.check_symptom("engine overheating, gauge sluggish reading")
     finally:
         client.close()
     kinds = [m.get("kind") or m.get("id") for m in result["matched"]]
     assert kinds == ["F-TEST-01", "data_only"]
+
+
+def test_data_only_noise_controls() -> None:
+    server = FakeVehicleServer(sessions=HOT_SESSIONS)
+    server.fault_entries += [
+        _unconfirmed("U-A", ["gauge sluggish reading"], ["did.ENGINE_SPEED", "did.COOLANT_TEMP"]),
+        _unconfirmed("U-B", ["gauge sluggish reading"], ["did.COOLANT_TEMP"]),
+        _unconfirmed("U-C", ["gauge sluggish reading"], ["did.UNKNOWN_C"]),
+        _unconfirmed("U-W", ["gauge only"], ["did.UNKNOWN_W"]),
+    ]
+    client = _client(server)
+    try:
+        result = VehicleTools(client).check_symptom("gauge sluggish reading")
+    finally:
+        client.close()
+    item = result["matched"][0]
+    # Only two entries contribute (best + one within the band); U-C is the third and is cut.
+    # Most-needed first: COOLANT_TEMP is needed by both, ENGINE_SPEED by one.
+    assert [c["signal"] for c in item["signals"]] == ["did.COOLANT_TEMP", "did.ENGINE_SPEED"]
+    assert "missing_in_ride" not in item
+
+
+def test_data_only_is_dropped_when_far_below_the_best_displayable_match() -> None:
+    server = FakeVehicleServer(sessions=HOT_SESSIONS)
+    # Covers one of two equally weighted words: score about 0.5 versus 1.0 for the entry.
+    server.fault_entries.append(
+        _unconfirmed("U-1", ["engine overheating gauge"], ["did.COOLANT_TEMP"])
+    )
+    client = _client(server)
+    try:
+        result = VehicleTools(client).check_symptom("engine overheating")
+    finally:
+        client.close()
+    assert [m.get("id") for m in result["matched"]] == ["F-TEST-01"]
+
+
+def test_data_only_signals_are_capped() -> None:
+    server = FakeVehicleServer(sessions=HOT_SESSIONS)
+    needs = [f"did.SIG_{i}" for i in range(6)]
+    server.fault_entries.append(_unconfirmed("U-1", ["gauge sluggish reading"], needs))
+    client = _client(server)
+    try:
+        item = VehicleTools(client).check_symptom("gauge sluggish reading")["matched"][0]
+    finally:
+        client.close()
+    assert len(item["missing_in_ride"]) == 4  # capped at four requested signals
 
 
 def test_unconfirmed_without_needs_or_signals_in_the_ride() -> None:
