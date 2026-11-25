@@ -68,5 +68,44 @@
     "wrong",
     "you",
     "your"
-  ]
+  ],
+  "synonyms": {
+    "dying": [
+      "flat",
+      "dead",
+      "drained"
+    ],
+    "dies": [
+      "flat",
+      "dead",
+      "drained"
+    ],
+    "died": [
+      "flat",
+      "dead",
+      "drained"
+    ],
+    "empty": [
+      "flat",
+      "dead",
+      "drained"
+    ],
+    "drains": [
+      "drained",
+      "flat"
+    ],
+    "hot": [
+      "overheating",
+      "overheats",
+      "boiling"
+    ],
+    "hotter": [
+      "overheating",
+      "overheats"
+    ],
+    "boils": [
+      "boiling"
+    ]
+  },
+  "_comment_synonyms": "synonyms: a complaint word also counts as each listed word (one-way, exact key, folded); see matching.synonyms"
 }

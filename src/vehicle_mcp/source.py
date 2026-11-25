@@ -32,6 +32,10 @@ class FaultNotAvailable(SourceError):
     """The fault catalog (or one entry) is not served: an older server or an unconfirmed entry."""
 
 
+class UnconfirmedRefused(SourceError):
+    """The server refused `include_unconfirmed` for this token (displayable-only still works)."""
+
+
 class HistorySource(Protocol):
     """Read-only access to recorded sessions."""
 
@@ -80,9 +84,10 @@ class HistorySource(Protocol):
         """The GET /rides shape: `columns` entries with `name` and `unit`, `rows`
         entries with `session_id`, `created_utc`, `values` and `flags`, and `skipped`."""
 
-    def fault_catalog(self, *, subsystem: str | None) -> Any:
-        """The GET /faults shape (displayable entries only): `defs_version`,
-        `vehicle` and `entries`. Never asks for unconfirmed entries."""
+    def fault_catalog(self, *, subsystem: str | None, include_unconfirmed: bool = False) -> Any:
+        """The GET /faults shape: `defs_version`, `vehicle` and `entries` (displayable only
+        unless `include_unconfirmed`, which only `check_symptom` uses, for data-only routing;
+        a refusal raises `UnconfirmedRefused`)."""
 
     def fault(self, fault_id: str) -> Any:
         """The GET /faults/{id} shape (displayable entries only): `defs_version`,

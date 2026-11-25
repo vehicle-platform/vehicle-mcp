@@ -19,6 +19,7 @@ from .source import (
     RidesRouteUnavailable,
     SourceError,
     StatsRouteUnavailable,
+    UnconfirmedRefused,
 )
 
 _MAX_DETAIL_CHARS = 300
@@ -250,14 +251,21 @@ class VehicleServerClient:
                 ) from None
             raise
 
-    def fault_catalog(self, *, subsystem: str | None) -> Any:
-        # include_unconfirmed is never sent: unconfirmed entries must not reach a rider.
+    def fault_catalog(self, *, subsystem: str | None, include_unconfirmed: bool = False) -> Any:
+        # include_unconfirmed is sent only by check_symptom (D-127 addendum), whose tool code
+        # reduces unconfirmed entries to measured values; every other caller leaves it off.
         params: dict[str, str] = {}
         if subsystem is not None:
             params["subsystem"] = subsystem
+        if include_unconfirmed:
+            params["include_unconfirmed"] = "true"
         try:
             return self.get_json("/faults", params)
         except VehicleServerError as exc:
+            if include_unconfirmed and exc.status_code in {403, 422}:
+                raise UnconfirmedRefused(
+                    f"vehicle-server refused include_unconfirmed ({exc.status_code})"
+                ) from None
             detail = (exc.detail or "").strip().lower()
             if exc.status_code == 404 and detail in {"", "not found", "not found."}:
                 raise FaultNotAvailable(

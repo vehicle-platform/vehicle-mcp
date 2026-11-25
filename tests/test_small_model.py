@@ -10,7 +10,7 @@ import httpx
 import pytest
 from mcp.server.mcpserver.exceptions import ToolError
 
-from tests.support import HOT_SESSIONS, TOKEN, FakeVehicleServer
+from tests.support import FAULT_ENTRY, HOT_SESSIONS, TOKEN, FakeVehicleServer
 from vehicle_mcp import matching
 from vehicle_mcp.client import VehicleServerClient
 from vehicle_mcp.config import Settings
@@ -206,17 +206,140 @@ def test_check_symptom_old_server_and_empty_complaint(hot: VehicleTools) -> None
         hot.check_symptom("   ")
 
 
-def test_check_symptom_never_asks_for_unconfirmed_and_only_reads() -> None:
+def test_check_symptom_asks_for_unconfirmed_only_to_reduce_it_and_only_reads() -> None:
     server = FakeVehicleServer(sessions=HOT_SESSIONS)
     client = _client(server)
     try:
         VehicleTools(client).check_symptom("engine overheating")
+        VehicleTools(client).list_fault_catalog()
     finally:
         client.close()
     assert all(r.method == "GET" for r in server.requests)
     faults = [r for r in server.requests if r.url.path == "/faults"]
-    assert faults
-    assert all("include_unconfirmed" not in str(r.url) for r in faults)
+    assert "include_unconfirmed=true" in str(faults[0].url)  # check_symptom
+    assert "include_unconfirmed" not in str(faults[-1].url)  # list_fault_catalog never asks
+
+
+def _unconfirmed(entry_id: str, phrases: list[str], needs: list[str]) -> dict[str, Any]:
+    return {
+        **FAULT_ENTRY,
+        "id": entry_id,
+        "complaints": phrases,
+        "complaints_i18n": {},
+        "needs": needs,
+        "displayable": False,
+        "root_cause": "SECRET-CAUSE",
+        "rider_text": "SECRET-TEXT",
+        "action": "SECRET-ACTION",
+    }
+
+
+def _data_only_tools(**kwargs: Any) -> tuple[VehicleTools, VehicleServerClient]:
+    server = FakeVehicleServer(sessions=HOT_SESSIONS, **kwargs)
+    server.fault_entries.append(
+        _unconfirmed("U-1", ["gauge sluggish reading"], ["did.COOLANT_TEMP"])
+    )
+    server.fault_entries.append(
+        _unconfirmed("U-2", ["gauge sluggish again"], ["did.COOLANT_TEMP", "did.ENGINE_SPEED"])
+    )
+    client = _client(server)
+    return VehicleTools(client), client
+
+
+def test_unconfirmed_matches_return_only_merged_measured_values() -> None:
+    tools, client = _data_only_tools()
+    try:
+        result = tools.check_symptom("the gauge is sluggish")
+    finally:
+        client.close()
+    assert [m.get("kind") for m in result["matched"]] == ["data_only"]
+    item = result["matched"][0]
+    assert item["measurable"] is True
+    names = [card["signal"] for card in item["signals"]]
+    assert names == ["did.COOLANT_TEMP", "did.ENGINE_SPEED"]  # merged, deduplicated
+    card = item["signals"][0]
+    assert {q["name"] for q in card["values"]} >= {"coolant_temp_max", "coolant_temp_last"}
+    assert card["trend_over_ride"] == "rising"
+    assert "catalog_direction" not in card
+    dumped = json.dumps(result["matched"])
+    for leak in ("U-1", "U-2", "SECRET", "root_cause", "rider_text", "advise_stop", "severity"):
+        assert leak not in dumped
+    assert "matched_phrase" not in dumped
+    assert result["session_id"] == "hot"
+
+
+def test_displayable_and_unconfirmed_matches_are_returned_together() -> None:
+    tools, client = _data_only_tools()
+    try:
+        result = tools.check_symptom("engine overheating, gauge sluggish")
+    finally:
+        client.close()
+    kinds = [m.get("kind") or m.get("id") for m in result["matched"]]
+    assert kinds == ["F-TEST-01", "data_only"]
+
+
+def test_unconfirmed_without_needs_or_signals_in_the_ride() -> None:
+    server = FakeVehicleServer(sessions=HOT_SESSIONS)
+    server.fault_entries.append(_unconfirmed("U-3", ["gauge sluggish reading"], []))
+    server.fault_entries.append(_unconfirmed("U-4", ["strange smell reading"], ["did.UNKNOWN"]))
+    client = _client(server)
+    try:
+        tools = VehicleTools(client)
+        silent = tools.check_symptom("gauge sluggish")
+        absent = tools.check_symptom("strange smell")
+    finally:
+        client.close()
+    assert silent["matched"] == [] and "no catalog entry matches" in silent["reason"]
+    item = absent["matched"][0]
+    assert item["kind"] == "data_only"
+    assert item["measurable"] is False
+    assert item["missing_in_ride"] == ["did.UNKNOWN"]
+
+
+@pytest.mark.parametrize("status", [403, 422])
+def test_refused_unconfirmed_falls_back_to_displayable_only(status: int) -> None:
+    tools, client = _data_only_tools(refuse_unconfirmed=status)
+    try:
+        hit = tools.check_symptom("engine overheating")
+        miss = tools.check_symptom("the gauge is sluggish")
+    finally:
+        client.close()
+    assert hit["matched"][0]["id"] == "F-TEST-01"
+    assert "did not allow unconfirmed" in hit["reason"]
+    assert miss["matched"] == []
+    assert "did not allow unconfirmed" in miss["reason"]
+    assert "no catalog entry matches" in miss["reason"]
+
+
+def test_synonyms_expand_complaint_words_only() -> None:
+    assert matching.expand(["battery", "dying"]) == [
+        "battery",
+        "dying",
+        "flat",
+        "dead",
+        "drained",
+    ]
+    assert matching.expand(["hot"], ("zz",))[:2] == ["hot", "overheating"]
+    assert matching.expand(["engine"]) == ["engine"]
+    assert matching.synonyms("zz") == {}
+    assert matching.synonyms("") == {}
+    assert matching.synonyms("../en") == matching.synonyms("en")  # letters only
+
+
+def test_synonyms_bridge_riders_words_to_catalog_wording() -> None:
+    server = FakeVehicleServer(sessions=HOT_SESSIONS)
+    server.fault_entries.append(
+        {**FAULT_ENTRY, "id": "F-BAT", "complaints": ["battery goes flat"], "needs": []}
+    )
+    client = _client(server)
+    try:
+        tools = VehicleTools(client)
+        dying = tools.check_symptom("my battery keeps dying")
+        hot_run = tools.check_symptom("the engine runs hot")
+    finally:
+        client.close()
+    assert dying["matched"][0]["id"] == "F-BAT"
+    assert hot_run["matched"][0]["id"] == "F-TEST-01"  # hot -> overheating
 
 
 def test_data_card_for_coolant_uses_the_latest_ride(hot: VehicleTools) -> None:

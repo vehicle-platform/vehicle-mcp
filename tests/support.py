@@ -376,6 +376,7 @@ class FakeVehicleServer:
         supports_stats: bool = True,
         supports_rides: bool = True,
         supports_faults: bool = True,
+        refuse_unconfirmed: int | None = None,
         rides_error: tuple[int, str] | None = None,
     ) -> None:
         self.requests: list[httpx.Request] = []
@@ -384,6 +385,7 @@ class FakeVehicleServer:
         self.supports_rides = supports_rides
         self.rides_error = rides_error
         self.supports_faults = supports_faults
+        self.refuse_unconfirmed = refuse_unconfirmed
         self.fault_entries = copy.deepcopy(FAULT_ENTRIES)
         self.summaries = copy.deepcopy(SUMMARY_BY_SESSION)
         self.rides_payload = copy.deepcopy(RIDES_PAYLOAD)
@@ -433,7 +435,14 @@ class FakeVehicleServer:
             subsystem = request.url.params.get("subsystem")
             if subsystem not in {None, "cooling", "brakes", "engine_mechanical"}:
                 return httpx.Response(422, json={"detail": f"unknown subsystem: {subsystem}"})
-            entries = [e for e in self.fault_entries if subsystem in {None, e["subsystem"]}]
+            unconfirmed = request.url.params.get("include_unconfirmed") == "true"
+            if unconfirmed and self.refuse_unconfirmed is not None:
+                return httpx.Response(self.refuse_unconfirmed, json={"detail": "not allowed"})
+            entries = [
+                e
+                for e in self.fault_entries
+                if subsystem in {None, e["subsystem"]} and (unconfirmed or e["displayable"])
+            ]
             return httpx.Response(
                 200, json={"defs_version": "vtest", "vehicle": "cl250", "entries": entries}
             )
