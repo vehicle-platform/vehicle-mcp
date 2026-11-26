@@ -193,12 +193,23 @@ uv run vehicle-mcp-index build \
 ### How a query is answered
 
 `query: <text>` is embedded with multilingual-e5-small (384 dimensions, cosine). The index returns
-the BM25 ranking (SQLite FTS5, `unicode61` with diacritics folded, OR of the query words) and
-the vector ranking (sqlite-vec `vec0`), fused with Reciprocal Rank Fusion (`1 / (60 + rank)`
-per list, ties break on the chunk id). Several chunks of one fault count once. Search is
-deterministic for a given index. BM25 carries part numbers and signal names, vectors carry
-paraphrases and Turkish. `locale` searches that language, language-neutral chunks and English
-(the corpus is mostly English and the model is multilingual); `any` searches everything.
+the BM25 ranking (SQLite FTS5, `unicode61` with diacritics folded, locale stopwords dropped,
+complaint synonyms expanded from `locales/*.json`, and Turkish inflectional suffixes stripped on
+both index and query using the suffix list in `locales/tr.json`) and the vector ranking
+(sqlite-vec `vec0`, filtered by an absolute cosine similarity floor calibrated for e5 at `0.845`),
+fused at the group (`ref`) level with Reciprocal Rank Fusion (`1 / (60 + rank)` per list, ties
+break on the chunk id). Hits scoring below `0.55 × best` are dropped so weak tail hits do not
+clutter the result. Several chunks of one fault count once. Search is deterministic for a given
+index. BM25 carries part numbers, stemmed Turkish roots and signal names; vectors carry
+paraphrases and cross-lingual matches. `locale` searches that language, language-neutral chunks
+and English (the corpus is mostly English and the model is multilingual); `any` searches
+everything.
+
+Evaluate retrieval quality on a built index with:
+
+```sh
+uv run vehicle-mcp-index eval --db /path/to/knowledge.sqlite --queries-dir tests/retrieval_eval
+```
 
 ### Why this runtime (trade-offs)
 

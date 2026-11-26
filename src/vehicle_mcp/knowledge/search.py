@@ -11,7 +11,13 @@ from . import KnowledgeUnavailable
 from .embedder import Embedder, OnnxE5Embedder
 from .settings import default_db_path, default_model_dir
 from .sources import USER_LOCAL
-from .store import Hit, open_index, query_tokens
+from .store import (
+    DEFAULT_MIN_SIMILARITY,
+    DEFAULT_RELATIVE_CUTOFF,
+    Hit,
+    open_index,
+    query_tokens,
+)
 
 MAX_SNIPPET_CHARS = 300
 MAX_QUERY_CHARS = 500
@@ -74,10 +80,14 @@ class KnowledgeSearch:
         *,
         embedder_factory: Callable[[], Embedder] | None = None,
         env: Mapping[str, str] | None = None,
+        relative_cutoff: float = DEFAULT_RELATIVE_CUTOFF,
+        min_similarity: float | None = None,
     ) -> None:
         self._db_path = db_path or default_db_path(env)
         self._factory = embedder_factory or (lambda: OnnxE5Embedder(default_model_dir(env)))
         self._embedder: Embedder | None = None
+        self._relative_cutoff = relative_cutoff
+        self._min_similarity = min_similarity
 
     def _get_embedder(self) -> Embedder:
         if self._embedder is None:
@@ -91,9 +101,21 @@ class KnowledgeSearch:
             index = open_index(self._db_path, model_id=embedder.model_id)
         except KnowledgeUnavailable as exc:
             return {**base, "available": False, "reason": str(exc)}
+        floor = (
+            self._min_similarity
+            if self._min_similarity is not None
+            else float(getattr(embedder, "min_similarity", DEFAULT_MIN_SIMILARITY))
+        )
         try:
             vector = embedder.embed_queries([query[:MAX_QUERY_CHARS]])[0]
-            hits = index.search(query, vector, k=k, locales=locales_for(locale))
+            hits = index.search(
+                query,
+                vector,
+                k=k,
+                locales=locales_for(locale),
+                relative_cutoff=self._relative_cutoff,
+                min_similarity=floor,
+            )
         finally:
             index.close()
         shaped = [self._shape(rank, hit, query) for rank, hit in enumerate(hits, start=1)]

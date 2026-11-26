@@ -112,6 +112,7 @@ class OnnxE5Embedder:
 
     model_id = MODEL_ID
     dim = MODEL_DIM
+    min_similarity = 0.845
 
     def __init__(self, model_dir: Path | None = None, threads: int | None = None) -> None:
         directory = model_dir or default_model_dir()

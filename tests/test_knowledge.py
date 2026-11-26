@@ -51,9 +51,11 @@ from vehicle_mcp.knowledge.sources import (
 from vehicle_mcp.knowledge.store import (
     Chunk,
     create_index,
+    fts_index_text,
     fts_query,
     open_index,
     query_tokens,
+    stem_turkish,
 )
 from vehicle_mcp.source import UnconfirmedRefused
 from vehicle_mcp.tools import VehicleTools
@@ -583,3 +585,106 @@ def test_real_model_retrieves_across_languages(tmp_path: Path) -> None:
     )
     assert result["hits"][0]["fault_id"] == "ENG-001"
     assert MODEL_FILES  # pinned
+
+
+# --- G2-2 retrieval quality: Turkish stemming, synonyms, cutoffs, eval CLI --------------------
+def test_turkish_stemming_and_fts_expansion() -> None:
+    assert stem_turkish("supaplardan") == "supap"
+    assert stem_turkish("amortisörden") == "amortisor"
+    assert stem_turkish("akü") == "aku"  # short root preserved
+    indexed = fts_index_text("supaplar ses yapıyor", "tr")
+    assert "supap" in indexed
+    assert fts_index_text("valves ticking", "en") == "valves ticking"
+    q_tr = fts_query(
+        "supaplardan tıkırtı sesi ile",
+        locales=["tr", "und", "en"],
+        stem_tr=True,
+        expand_synonyms=True,
+        drop_stopwords=True,
+    )
+    assert '"supap"' in q_tr and '"ile"' not in q_tr
+    q_en = fts_query(
+        "battery is dying",
+        locales=["en", "und"],
+        stem_tr=True,
+        expand_synonyms=True,
+        drop_stopwords=True,
+    )
+    assert '"flat"' in q_en and '"drained"' in q_en and '"is"' not in q_en
+
+
+def test_cutoffs_suppress_weak_vector_hits_and_preserve_strong_ones(tmp_path: Path) -> None:
+    db, fake = _built(tmp_path)
+    idx = open_index(db, model_id=fake.model_id)
+    # High absolute similarity floor suppresses an unrelated query with no BM25 match.
+    weak = idx.search(
+        "zzzzunrelated",
+        fake.embed_queries(["zzzzunrelated"])[0],
+        k=5,
+        locales=["en", "und"],
+        min_similarity=0.95,
+    )
+    assert weak == []
+    # Relative cutoff keeps strong hybrid hits and trims weak vector-only tail hits.
+    strong = idx.search(
+        "supaplardan tıkırtı",
+        fake.embed_queries(["supaplardan tıkırtı"])[0],
+        k=5,
+        locales=["tr", "und", "en"],
+        relative_cutoff=0.60,
+    )
+    assert strong and strong[0].chunk.ref == "ENG-001"
+    assert all(h.score >= 0.60 * strong[0].score for h in strong)
+    idx.close()
+
+
+def test_retrieval_eval_runner_and_cli(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    from vehicle_mcp.knowledge import eval_retrieval
+
+    db, fake = _built(tmp_path)
+    qdir = tmp_path / "eval"
+    (qdir / "locales").mkdir(parents=True)
+    (qdir / "queries.json").write_text(
+        json.dumps(
+            {
+                "locale": "en",
+                "queries": [
+                    {"id": "q1", "query": "valve ticking", "expected": ["ENG-001"]},
+                    {
+                        "id": "q2",
+                        "query": "radiator fan coolant traffic",
+                        "expected": ["docs/cooling.md#Fan"],
+                    },
+                    {"id": "q3", "query": "zzz nonexistent", "expected": ["NO-SUCH"]},
+                ],
+                "weak_queries": [{"id": "w1", "query": "zzz"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (qdir / "locales" / "tr.json").write_text(
+        json.dumps(
+            {
+                "locale": "tr",
+                "queries": [{"id": "t1", "query": "supaplardan tıkırtı", "expected": ["ENG-001"]}],
+                "weak_queries": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    reports = eval_retrieval.evaluate_all(db, qdir, ["en", "tr"], embedder=fake, k=3)
+    assert len(reports) == 2
+    en_rep, tr_rep = reports
+    assert en_rep.queries == 3 and en_rep.recall_at_1 > 0 and en_rep.misses
+    assert tr_rep.queries == 1 and tr_rep.recall_at_1 == 1.0
+    assert "R@1" in eval_retrieval.format_table(reports)
+    parsed = json.loads(eval_retrieval.report_to_json(reports))
+    assert [r["locale"] for r in parsed] == ["en", "tr"]
+
+    # CLI eval text + misses + JSON + missing dir error
+    assert _run(["eval", "--db", str(db), "--queries-dir", str(qdir), "--show-misses"]) == 0
+    out = capsys.readouterr().out
+    assert "R@1" in out and "non-rank-1" in out
+    assert _run(["eval", "--db", str(db), "--queries-dir", str(qdir), "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)[0]["locale"] == "en"
+    assert _run(["eval", "--db", str(db), "--queries-dir", str(tmp_path / "missing")]) == 2
