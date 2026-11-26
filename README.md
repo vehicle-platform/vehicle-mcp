@@ -193,12 +193,32 @@ uv run vehicle-mcp-index build \
 ### How a query is answered
 
 `query: <text>` is embedded with multilingual-e5-small (384 dimensions, cosine). The index returns
-the BM25 ranking (SQLite FTS5, `unicode61` with diacritics folded, OR of the query words) and
-the vector ranking (sqlite-vec `vec0`), fused with Reciprocal Rank Fusion (`1 / (60 + rank)`
-per list, ties break on the chunk id). Several chunks of one fault count once. Search is
-deterministic for a given index. BM25 carries part numbers and signal names, vectors carry
-paraphrases and Turkish. `locale` searches that language, language-neutral chunks and English
-(the corpus is mostly English and the model is multilingual); `any` searches everything.
+the BM25 ranking (SQLite FTS5, `unicode61` with diacritics folded, locale stopwords dropped,
+complaint synonyms expanded from `locales/*.json`, and Turkish inflectional suffixes stripped on
+`tr` chunks at index time and on the query only when the query locale is exactly `tr`, using the
+suffix list in `locales/tr.json`) and the vector ranking (sqlite-vec `vec0`, filtered by an
+absolute cosine similarity floor calibrated for e5, `E5_MIN_COSINE = 0.83`), fused at the group
+(`ref`) level with Reciprocal Rank Fusion (`1 / (60 + rank)` per list, ties break on the chunk
+id). Relevance is never decided on the fused score (RRF is rank-based, so a hit found in one list
+scores half of a hit found in both): a group is kept when it passes the vector floor or is among
+the first 2 BM25 groups. `bm25_rank` and `vector_rank` of a hit are the ranks of the group's best
+chunk in each list. Several chunks of one fault count once. Search is deterministic for a given
+index. BM25 carries part numbers, stemmed Turkish roots and signal names; vectors carry
+paraphrases and cross-lingual matches. `locale` searches that language, language-neutral chunks
+and English (the corpus is mostly English and the model is multilingual); `any` searches
+everything.
+
+Evaluate retrieval quality on a built index with:
+
+```sh
+uv run vehicle-mcp-index eval --db /path/to/knowledge.sqlite
+```
+
+It prints recall@1/@3/@5, MRR and weak-query noise per locale for two splits: `tune` (queries a
+person wrote; parameters may be chosen on them) and `holdout` (catalog complaint phrases; never
+used to choose parameters). Build the index you evaluate the holdout on with
+`vehicle-mcp-index build --exclude-holdout ...` so the held-out phrases are not in it. The tuning
+grid and its method are in `tests/retrieval_eval/tuning.json`.
 
 ### Why this runtime (trade-offs)
 
@@ -213,8 +233,8 @@ paraphrases and Turkish. `locale` searches that language, language-neutral chunk
 
 Known limits: e5 cosine scores sit in a narrow band (about 0.80 to 0.90), so the vector side
 always returns something and a nonsense query still gets hits; `score` and `similarity` are
-there so the caller can judge. BM25 does not stem Turkish suffixes (`supaplardan` vs `supap`);
-the vector ranking covers that. The model is downloaded at setup into the cache directory, pinned
+there so the caller can judge. The Turkish stemmer is a light, single-pass suffix stripper (a stem is never shorter than five
+letters); the vector ranking covers what it misses. The model is downloaded at setup into the cache directory, pinned
 to one revision and verified against pinned SHA-256 sums; nothing is fetched at query time and
 no model, index or manual is ever committed (a test fails if git tracks a PDF, an index, model
 weights or a `manuals/` path, and the secret scan stays on).

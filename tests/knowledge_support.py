@@ -27,6 +27,7 @@ class FakeEmbedder:
 
     model_id = "fake-embedder@1"
     dim = DIM
+    min_similarity = 0.0
 
     def __init__(self) -> None:
         self.prefixed: list[str] = []

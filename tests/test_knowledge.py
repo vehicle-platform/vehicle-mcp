@@ -51,10 +51,13 @@ from vehicle_mcp.knowledge.sources import (
 from vehicle_mcp.knowledge.store import (
     Chunk,
     create_index,
+    fts_index_text,
     fts_query,
     open_index,
     query_tokens,
+    stem_turkish,
 )
+from vehicle_mcp.matching import normalise as matching_fold
 from vehicle_mcp.source import UnconfirmedRefused
 from vehicle_mcp.tools import VehicleTools
 
@@ -583,3 +586,206 @@ def test_real_model_retrieves_across_languages(tmp_path: Path) -> None:
     )
     assert result["hits"][0]["fault_id"] == "ENG-001"
     assert MODEL_FILES  # pinned
+
+
+# --- G2-2 retrieval quality: Turkish stemming, synonyms, cutoffs, eval CLI --------------------
+def test_turkish_stemming_and_fts_expansion() -> None:
+    assert stem_turkish("supaplardan") == "supap"
+    assert stem_turkish("amortisörden") == "amortisor"
+    assert stem_turkish("akü") == "aku"  # short root preserved
+    # words that merely end like a suffix must stay intact (one-letter suffixes, short stems)
+    for word in ("lamba", "motor", "yağ", "fren", "zincir", "kapak", "sele", "aku", "ısı"):
+        assert stem_turkish(word) == matching_fold(word), word
+    assert stem_turkish("lambalar") == "lamba"  # one pass, stem stays long enough
+    assert stem_turkish("supaplarından") == "supaplari"  # no repeated over-stripping
+    indexed = fts_index_text("supaplar ses yapıyor", "tr")
+    assert "supap" in indexed
+    assert fts_index_text("valves ticking", "en") == "valves ticking"
+    q_tr = fts_query(
+        "supaplardan tıkırtı sesi ile",
+        locales=["tr", "und", "en"],
+        stem_tr=True,
+        expand_synonyms=True,
+        drop_stopwords=True,
+    )
+    assert '"supap"' in q_tr and '"ile"' not in q_tr
+    q_en = fts_query(
+        "battery is dying",
+        locales=["en", "und"],
+        stem_tr=False,
+        expand_synonyms=True,
+        drop_stopwords=True,
+    )
+    assert '"flat"' in q_en and '"drained"' in q_en and '"is"' not in q_en
+
+
+def test_vector_floor_suppresses_weak_vector_hits(tmp_path: Path) -> None:
+    db, fake = _built(tmp_path)
+    idx = open_index(db, model_id=fake.model_id)
+    args = ("zzzzunrelated", fake.embed_queries(["zzzzunrelated"])[0])
+    # no lexical match and a high cosine floor: nothing survives
+    assert idx.search(*args, k=5, locales=["en", "und"], min_similarity=0.95) == []
+    # without the floor the weakest vector neighbours are returned
+    assert idx.search(*args, k=5, locales=["en", "und"], min_similarity=0.0)
+    idx.close()
+
+
+def test_single_list_hits_survive_without_a_relative_rrf_cutoff(tmp_path: Path) -> None:
+    db, fake = _built(tmp_path)
+    idx = open_index(db, model_id=fake.model_id)
+    # vector-only (cross-lingual) hit at rank 1: its fused score is half of a both-lists hit
+    vec_only = idx.search("tıkırtı", fake.embed_queries(["tıkırtı"])[0], k=3, locales=["en"])
+    assert vec_only and vec_only[0].chunk.ref == "ENG-001"
+    assert vec_only[0].bm25_rank is None and vec_only[0].vector_rank == 1
+    # lexical-only hit (the vector floor rejects everything): kept inside the top-N lexical
+    query = "radiator"
+    lex = idx.search(query, fake.embed_queries([query])[0], k=3, locales=["en"], min_similarity=1.1)
+    assert lex and lex[0].vector_rank is None and lex[0].bm25_rank == 1
+    # lexical_top_n = 0 turns the lexical path off
+    none = idx.search(
+        query,
+        fake.embed_queries([query])[0],
+        k=3,
+        locales=["en"],
+        min_similarity=1.1,
+        lexical_top_n=0,
+    )
+    assert none == []
+    idx.close()
+
+
+def test_group_level_fusion_combines_ranks_across_chunks(tmp_path: Path) -> None:
+    db = tmp_path / "g.sqlite"
+    fake = FakeEmbedder()
+    index = create_index(db, dim=fake.dim, model_id=fake.model_id)
+    chunks = [
+        Chunk(source="s", title="A", text="alpha ticking noise", ref="F-1", kind="complaint"),
+        Chunk(source="s", title="A", text="engine tap clatter", ref="F-1", kind="complaint"),
+        Chunk(source="s", title="B", text="alpha filler words", ref="F-2", kind="complaint"),
+    ]
+    index.add_chunks(chunks, indexer._embed_all(fake, chunks))
+    # BM25 best chunk of F-1 is "alpha ticking noise"; the vector best chunk is the other one
+    query = "alpha tap"
+    hits = index.search(query, fake.embed_queries([query])[0], k=3)
+    by_ref = {h.chunk.ref: h for h in hits}
+    assert by_ref["F-1"].bm25_rank is not None and by_ref["F-1"].vector_rank is not None
+    assert by_ref["F-1"].score > by_ref["F-2"].score
+    assert len(by_ref) == len(hits)  # one hit per ref
+    index.close()
+
+
+def test_open_index_rejects_another_schema_version(tmp_path: Path) -> None:
+    db, fake = _built(tmp_path)
+    index = open_index(db, model_id=fake.model_id)
+    index.set_meta("schema_version", "1")
+    index.close()
+    with pytest.raises(KnowledgeUnavailable, match="rebuild it with"):
+        open_index(db, model_id=fake.model_id)
+    result = _searcher(db, fake).search("valve")
+    assert result["available"] is False and "schema" in result["reason"]
+
+
+class _StrictEmbedder(FakeEmbedder):
+    min_similarity = 1.1  # nothing is similar enough
+
+
+def test_embedder_similarity_floor_applies_through_the_normal_path(tmp_path: Path) -> None:
+    db, fake = _built(tmp_path)
+    assert emb.E5_MIN_COSINE == emb.OnnxE5Embedder.min_similarity
+    strict = KnowledgeSearch(db, embedder_factory=lambda: _StrictEmbedder(), lexical_top_n=0)
+    assert strict.search("zzzzunrelated")["hits"] == []
+    open_floor = KnowledgeSearch(db, embedder_factory=lambda: fake, lexical_top_n=0)
+    assert open_floor.search("tıkırtı", "tr")["hits"]
+
+
+def test_query_stemming_only_for_the_tr_locale() -> None:
+    kwargs = {"expand_synonyms": False, "drop_stopwords": False}
+    assert '"supap"' in fts_query("supaplardan", stem_tr=True, **kwargs)
+    assert '"supap"' not in fts_query("supaplardan", locales=["tr", "en"], stem_tr=False, **kwargs)
+
+
+def test_exclude_holdout_removes_the_held_out_phrases(tmp_path: Path) -> None:
+    from vehicle_mcp.knowledge import eval_retrieval
+
+    qdir = tmp_path / "eval"
+    (qdir / "locales").mkdir(parents=True)
+    held = {"id": "h", "query": "tapping sound at idle", "expected": ["ENG-001"]}
+    (qdir / "queries.json").write_text(
+        json.dumps({"locale": "en", "queries": [{**held, "split": "holdout"}]}), encoding="utf-8"
+    )
+    (qdir / "locales" / "tr.json").write_text(
+        json.dumps({"locale": "tr", "queries": []}), encoding="utf-8"
+    )
+    chunks = catalog_chunks(catalog_payload())
+    kept = eval_retrieval.without_holdout(chunks, qdir, ("en", "tr"))
+    assert not [c for c in kept if c.kind == "complaint" and c.text == held["query"]]
+    fault = next(c for c in kept if c.kind == "fault" and c.ref == "ENG-001")
+    assert "tapping sound" not in fault.text and "ticking noise from the engine" in fault.text
+    assert len(kept) == len(chunks) - 1
+
+
+def test_retrieval_eval_runner_and_cli(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    from vehicle_mcp.knowledge import eval_retrieval
+
+    db, fake = _built(tmp_path)
+    qdir = tmp_path / "eval"
+    (qdir / "locales").mkdir(parents=True)
+    (qdir / "queries.json").write_text(
+        json.dumps(
+            {
+                "locale": "en",
+                "queries": [
+                    {"id": "q1", "query": "valve ticking", "expected": ["ENG-001"]},
+                    {
+                        "id": "q2",
+                        "query": "radiator fan coolant traffic",
+                        "expected": ["docs/cooling.md#Fan"],
+                    },
+                    {"id": "q3", "query": "zzz nonexistent", "expected": ["NO-SUCH"]},
+                    {
+                        "id": "h1",
+                        "query": "ticking noise from the engine",
+                        "expected": ["ENG-001"],
+                        "split": "holdout",
+                    },
+                ],
+                "weak_queries": [{"id": "w1", "query": "zzz"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (qdir / "locales" / "tr.json").write_text(
+        json.dumps(
+            {
+                "locale": "tr",
+                "queries": [{"id": "t1", "query": "supaplardan tıkırtı", "expected": ["ENG-001"]}],
+                "weak_queries": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    reports = eval_retrieval.evaluate_all(db, qdir, ["en", "tr"], embedder=fake, k=3)
+    assert [(r.locale, r.split) for r in reports] == [
+        ("en", "tune"),
+        ("en", "holdout"),
+        ("tr", "tune"),
+    ]
+    en_rep, en_hold, tr_rep = reports
+    assert en_hold.queries == 1 and en_hold.recall_at_1 == 1.0
+    assert en_rep.queries == 3 and en_rep.recall_at_1 > 0 and en_rep.misses
+    assert tr_rep.queries == 1 and tr_rep.recall_at_1 == 1.0
+    assert "R@1" in eval_retrieval.format_table(reports)
+    parsed = json.loads(eval_retrieval.report_to_json(reports))
+    assert [r["locale"] for r in parsed] == ["en", "en", "tr"]
+    with pytest.raises(ValueError, match="split"):
+        eval_retrieval._split_of({"id": "x", "split": "dev"})
+
+    # CLI eval text + misses + JSON + missing dir error
+    assert _run(["eval", "--db", str(db), "--queries-dir", str(qdir), "--show-misses"]) == 0
+    out = capsys.readouterr().out
+    assert "R@1" in out and "non-rank-1" in out and "holdout" in out
+    assert _run(["eval", "--db", str(db), "--queries-dir", str(qdir), "--split", "holdout"]) == 0
+    assert "tune" not in capsys.readouterr().out.split("\n", 2)[2]
+    assert _run(["eval", "--db", str(db), "--queries-dir", str(qdir), "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)[0]["locale"] == "en"
+    assert _run(["eval", "--db", str(db), "--queries-dir", str(tmp_path / "missing")]) == 2

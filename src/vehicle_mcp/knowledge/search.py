@@ -11,7 +11,7 @@ from . import KnowledgeUnavailable
 from .embedder import Embedder, OnnxE5Embedder
 from .settings import default_db_path, default_model_dir
 from .sources import USER_LOCAL
-from .store import Hit, open_index, query_tokens
+from .store import DEFAULT_LEXICAL_TOP_N, Hit, open_index, query_tokens
 
 MAX_SNIPPET_CHARS = 300
 MAX_QUERY_CHARS = 500
@@ -74,10 +74,14 @@ class KnowledgeSearch:
         *,
         embedder_factory: Callable[[], Embedder] | None = None,
         env: Mapping[str, str] | None = None,
+        lexical_top_n: int = DEFAULT_LEXICAL_TOP_N,
+        min_similarity: float | None = None,
     ) -> None:
         self._db_path = db_path or default_db_path(env)
         self._factory = embedder_factory or (lambda: OnnxE5Embedder(default_model_dir(env)))
         self._embedder: Embedder | None = None
+        self._lexical_top_n = lexical_top_n
+        self._min_similarity = min_similarity
 
     def _get_embedder(self) -> Embedder:
         if self._embedder is None:
@@ -91,9 +95,20 @@ class KnowledgeSearch:
             index = open_index(self._db_path, model_id=embedder.model_id)
         except KnowledgeUnavailable as exc:
             return {**base, "available": False, "reason": str(exc)}
+        floor = (
+            self._min_similarity if self._min_similarity is not None else embedder.min_similarity
+        )
         try:
             vector = embedder.embed_queries([query[:MAX_QUERY_CHARS]])[0]
-            hits = index.search(query, vector, k=k, locales=locales_for(locale))
+            hits = index.search(
+                query,
+                vector,
+                k=k,
+                locales=locales_for(locale),
+                lexical_top_n=self._lexical_top_n,
+                stem_tr=locale.strip().lower() == "tr",
+                min_similarity=floor,
+            )
         finally:
             index.close()
         shaped = [self._shape(rank, hit, query) for rank, hit in enumerate(hits, start=1)]

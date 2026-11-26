@@ -2,28 +2,42 @@
 
 Search is deterministic for a given index and query vector: BM25 (FTS5) and cosine (vec0)
 rankings are fused with Reciprocal Rank Fusion (k = 60) and ties break on the chunk id.
+RRF scores are rank-based, so relevance is NOT decided on them (a hit found in one list at rank 1
+scores exactly half of one found in both). A group is kept when it passes the vector cosine floor
+(it is in the vector pool) or is a lexical match within the top `lexical_top_n` BM25 groups.
+Turkish FTS indexing and querying apply a light suffix-stripping stemmer driven by
+`locales/tr.json` (G2-2); FTS queries also expand complaint synonyms from `locales/*.json`.
 """
 
 from __future__ import annotations
 
+import functools
+import json
 import re
 import sqlite3
 from collections.abc import Sequence
 from dataclasses import dataclass
+from importlib import resources
 from pathlib import Path
 from typing import Any
 
+from vehicle_mcp import matching
+
 from . import KnowledgeUnavailable
 
-SCHEMA_VERSION = "1"
+SCHEMA_VERSION = "2"
 RRF_K = 60
 MAX_QUERY_TOKENS = 32
 VECTOR_POOL_MIN = 30
 VECTOR_POOL_PER_K = 5
 VECTOR_FETCH_MAX = 500
 FTS_POOL = 50
+DEFAULT_MIN_SIMILARITY = 0.0
+DEFAULT_LEXICAL_TOP_N = 2
 
 _WORD = re.compile(r"\w+", re.UNICODE)
+_TR_MIN_SUFFIX_LEN = 2  # one-letter suffixes over-strip ("lamba" -> "lamb")
+_TR_MIN_STEM = 5  # a stem shorter than this is never produced (akü, lamba stay intact)
 
 
 @dataclass(frozen=True)
@@ -47,18 +61,106 @@ class Hit:
     chunk: Chunk
     chunk_id: int
     score: float
-    bm25_rank: int | None
-    vector_rank: int | None
-    similarity: float | None
+    bm25_rank: int | None  # 1-based rank of the group's best chunk among BM25 groups
+    vector_rank: int | None  # 1-based rank of the group's best chunk among vector groups
+    similarity: float | None  # cosine of that vector chunk (None: not in the vector pool)
+
+
+@functools.cache
+def turkish_suffixes() -> tuple[str, ...]:
+    """Longest-first folded Turkish suffix list from `locales/tr.json`."""
+    try:
+        raw = (resources.files("vehicle_mcp") / "locales" / "tr.json").read_text("utf-8")
+        items = json.loads(raw).get("suffixes", [])
+    except (OSError, ValueError, AttributeError):
+        return ()
+    folded = [matching.normalise(s) for s in items if isinstance(s, str)]
+    unique = dict.fromkeys(s for s in folded if s)
+    return tuple(sorted(unique, key=len, reverse=True))
+
+
+def stem_turkish(token: str) -> str:
+    """Light, single-pass Turkish suffix stripper driven by `locales/tr.json` (no dependency).
+
+    Only suffixes of at least two letters are used, one is stripped at most once and the stem
+    never gets shorter than five letters, so short roots and words that merely end in a vowel
+    ("akü", "lamba", "motor") stay intact.
+    """
+    stem = matching.normalise(token)
+    if len(stem) <= _TR_MIN_STEM:
+        return stem
+    for suffix in turkish_suffixes():
+        if len(suffix) >= _TR_MIN_SUFFIX_LEN and stem.endswith(suffix):
+            candidate = stem[: -len(suffix)]
+            if len(candidate) >= _TR_MIN_STEM:
+                return candidate
+    return stem
+
+
+def fts_index_text(text: str, locale: str) -> str:
+    """Text inserted into `chunks_fts`: appends unique Turkish stems for `locale == 'tr'`."""
+    if locale != "tr":
+        return text
+    extras: list[str] = []
+    seen: set[str] = set()
+    for raw in _WORD.findall(text):
+        folded = matching.normalise(raw)
+        if not folded:
+            continue
+        seen.add(folded)
+        stemmed = stem_turkish(folded)
+        if stemmed and stemmed != folded and stemmed not in seen:
+            seen.add(stemmed)
+            extras.append(stemmed)
+    return f"{text} {' '.join(extras)}" if extras else text
 
 
 def query_tokens(query: str) -> list[str]:
     return [t.lower() for t in _WORD.findall(query)][:MAX_QUERY_TOKENS]
 
 
-def fts_query(query: str) -> str:
-    """An OR query of quoted word tokens (no FTS operator in user text can take effect)."""
-    return " OR ".join(f'"{t}"' for t in query_tokens(query))
+def fts_query(
+    query: str,
+    *,
+    locales: Sequence[str] | None = None,
+    stem_tr: bool = False,
+    expand_synonyms: bool = False,
+    drop_stopwords: bool = False,
+) -> str:
+    """An OR query of quoted word tokens (no FTS operator in user text can take effect).
+
+    `stem_tr` is set by the caller only when the active locale is exactly `tr`.
+    """
+    raw_tokens = query_tokens(query)
+    if not raw_tokens:
+        return ""
+    if not (stem_tr or expand_synonyms or drop_stopwords):
+        return " OR ".join(f'"{t}"' for t in raw_tokens)
+    active_locales = tuple(locales) if locales is not None else ("en", "tr")
+    stop = matching.active_stopwords(active_locales) if drop_stopwords else frozenset()
+    kept = [t for t in raw_tokens if matching.normalise(t) not in stop]
+    base = kept or raw_tokens
+    terms: list[str] = []
+    seen: set[str] = set()
+
+    def add(term: str) -> None:
+        if term and term not in seen and len(terms) < MAX_QUERY_TOKENS:
+            seen.add(term)
+            terms.append(term)
+
+    tr_active = stem_tr
+    for tok in base:
+        add(tok)
+        folded = matching.normalise(tok)
+        if folded:
+            add(folded)
+        if tr_active and folded:
+            add(stem_turkish(folded))
+    if expand_synonyms:
+        folded_base = [matching.normalise(t) for t in base if matching.normalise(t)]
+        for expanded in matching.expand(folded_base, active_locales):
+            add(expanded)
+    return " OR ".join(f'"{t}"' for t in terms)
 
 
 def pack_vector(vector: Sequence[float]) -> bytes:
@@ -126,9 +228,11 @@ class KnowledgeIndex:
                 ),
             )
             rowid = cursor.lastrowid
+            fts_text = fts_index_text(chunk.text, chunk.locale)
+            fts_title = fts_index_text(f"{chunk.title} {chunk.section}".strip(), chunk.locale)
             self._conn.execute(
                 "INSERT INTO chunks_fts(rowid, text, title) VALUES (?,?,?)",
-                (rowid, chunk.text, f"{chunk.title} {chunk.section}".strip()),
+                (rowid, fts_text, fts_title),
             )
             self._conn.execute(
                 "INSERT INTO chunks_vec(rowid, embedding) VALUES (?,?)",
@@ -163,13 +267,35 @@ class KnowledgeIndex:
         names = "source title section locale text url_or_path license kind ref display".split()
         return Chunk(**dict(zip(names, row, strict=True)))
 
-    def _locale_of(self, chunk_id: int) -> str:
-        return str(
-            self._conn.execute("SELECT locale FROM chunks WHERE id = ?", (chunk_id,)).fetchone()[0]
-        )
+    def _locale_and_ref_of(
+        self, chunk_id: int, cache: dict[int, tuple[str, str]] | None = None
+    ) -> tuple[str, str]:
+        if cache is not None and chunk_id in cache:
+            return cache[chunk_id]
+        row = self._conn.execute(
+            "SELECT locale, ref FROM chunks WHERE id = ?", (chunk_id,)
+        ).fetchone()
+        value = (str(row[0]), str(row[1]))
+        if cache is not None:
+            cache[chunk_id] = value
+        return value
 
-    def _bm25(self, query: str, locales: Sequence[str] | None) -> list[int]:
-        match = fts_query(query)
+    def _bm25(
+        self,
+        query: str,
+        locales: Sequence[str] | None,
+        *,
+        stem_tr: bool = False,
+        expand_synonyms: bool = True,
+        drop_stopwords: bool = True,
+    ) -> list[int]:
+        match = fts_query(
+            query,
+            locales=locales,
+            stem_tr=stem_tr,
+            expand_synonyms=expand_synonyms,
+            drop_stopwords=drop_stopwords,
+        )
         if not match:
             return []
         sql = (
@@ -185,7 +311,13 @@ class KnowledgeIndex:
         return [int(r[0]) for r in self._conn.execute(sql, args)]
 
     def _nearest(
-        self, vector: Sequence[float], k: int, locales: Sequence[str] | None
+        self,
+        vector: Sequence[float],
+        k: int,
+        locales: Sequence[str] | None,
+        *,
+        min_similarity: float = DEFAULT_MIN_SIMILARITY,
+        cache: dict[int, tuple[str, str]] | None = None,
     ) -> list[tuple[int, float]]:
         total = self.count()
         if total == 0:
@@ -200,9 +332,14 @@ class KnowledgeIndex:
         keep = max(VECTOR_POOL_MIN, VECTOR_POOL_PER_K * k)
         out: list[tuple[int, float]] = []
         for rowid, distance in rows:
-            if locales and self._locale_of(int(rowid)) not in locales:
+            sim = 1.0 - float(distance)
+            if sim < min_similarity:
+                break
+            cid = int(rowid)
+            locale, _ = self._locale_and_ref_of(cid, cache)
+            if locales and locale not in locales:
                 continue
-            out.append((int(rowid), 1.0 - float(distance)))
+            out.append((cid, sim))
             if len(out) >= keep:
                 break
         return out
@@ -214,31 +351,64 @@ class KnowledgeIndex:
         *,
         k: int = 5,
         locales: Sequence[str] | None = None,
+        lexical_top_n: int = DEFAULT_LEXICAL_TOP_N,
+        min_similarity: float = DEFAULT_MIN_SIMILARITY,
+        stem_tr: bool = False,
+        expand_synonyms: bool = True,
+        drop_stopwords: bool = True,
     ) -> list[Hit]:
-        """Hybrid search: top `k` groups (one hit per `ref`) by fused score, best first."""
-        bm25 = {cid: rank for rank, cid in enumerate(self._bm25(query, locales), start=1)}
-        near = self._nearest(vector, k, locales)
-        vec_rank = {cid: rank for rank, (cid, _) in enumerate(near, start=1)}
-        similarity = dict(near)
-        fused: dict[int, float] = {}
-        for ranks in (bm25, vec_rank):
-            for cid, rank in ranks.items():
-                fused[cid] = fused.get(cid, 0.0) + 1.0 / (RRF_K + rank)
-        ordered = sorted(fused, key=lambda cid: (-fused[cid], cid))
-        hits: list[Hit] = []
-        seen: set[str] = set()
-        for cid in ordered:
-            chunk = self._chunk(cid)
-            group = chunk.ref or f"#{cid}"
-            if group in seen:
+        """Hybrid search: top `k` groups (one hit per `ref`) by fused score, best first.
+
+        BM25 and vector rankings are fused at the group (`ref`) level so a fault entry whose
+        BM25 hit and vector hit land on different complaint phrases still combines both ranks
+        (`Hit.bm25_rank` / `Hit.vector_rank` are the ranks of the group's best chunk in each
+        list). Relevance is decided on the underlying signals, never on the rank-based fused
+        score: a group survives when its best chunk has cosine similarity >= `min_similarity`
+        (it is in the vector pool) or when it is among the first `lexical_top_n` BM25 groups.
+        With `lexical_top_n = 0` only vector hits survive.
+        """
+        cache: dict[int, tuple[str, str]] = {}
+        bm25_ids = self._bm25(
+            query,
+            locales,
+            stem_tr=stem_tr,
+            expand_synonyms=expand_synonyms,
+            drop_stopwords=drop_stopwords,
+        )
+        near = self._nearest(vector, k, locales, min_similarity=min_similarity, cache=cache)
+        bm25_group: dict[str, tuple[int, int]] = {}
+        for cid in bm25_ids:
+            group = self._locale_and_ref_of(cid, cache)[1] or f"#{cid}"
+            if group not in bm25_group:
+                bm25_group[group] = (len(bm25_group) + 1, cid)
+        vec_group: dict[str, tuple[int, int, float]] = {}
+        for cid, sim in near:
+            group = self._locale_and_ref_of(cid, cache)[1] or f"#{cid}"
+            if group not in vec_group:
+                vec_group[group] = (len(vec_group) + 1, cid, sim)
+        scored: list[tuple[float, int, int | None, int | None, float | None]] = []
+        for group in set(bm25_group) | set(vec_group):
+            bm = bm25_group.get(group)
+            vc = vec_group.get(group)
+            if bm is not None and bm[0] > lexical_top_n:
+                bm = None  # a weak lexical match does not count as evidence on its own
+            if bm is None and vc is None:
                 continue
-            seen.add(group)
-            hits.append(
-                Hit(chunk, cid, fused[cid], bm25.get(cid), vec_rank.get(cid), similarity.get(cid))
+            score = (1.0 / (RRF_K + bm[0]) if bm else 0.0) + (1.0 / (RRF_K + vc[0]) if vc else 0.0)
+            if bm is not None and (vc is None or bm[1] == vc[1] or bm[0] <= vc[0]):
+                cid = bm[1]
+            elif vc is not None:
+                cid = vc[1]
+            else:
+                continue
+            scored.append(
+                (score, cid, bm[0] if bm else None, vc[0] if vc else None, vc[2] if vc else None)
             )
-            if len(hits) >= k:
-                break
-        return hits
+        scored.sort(key=lambda item: (-item[0], item[1]))
+        return [
+            Hit(self._chunk(cid), cid, score, br, vr, hit_sim)
+            for score, cid, br, vr, hit_sim in scored[:k]
+        ]
 
 
 _SCHEMA = """
@@ -338,5 +508,13 @@ def open_index(path: Path, *, model_id: str) -> KnowledgeIndex:
         conn.close()
         raise KnowledgeUnavailable(
             "the index was built with another embedding model; rebuild it with --rebuild"
+        )
+    version = conn.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()
+    if version is None or str(version[0]) != SCHEMA_VERSION:
+        conn.close()
+        raise KnowledgeUnavailable(
+            "the index was built by another version of vehicle-mcp (schema "
+            f"{version[0] if version else 'unknown'}, expected {SCHEMA_VERSION}); "
+            "rebuild it with `vehicle-mcp-index build --rebuild`"
         )
     return KnowledgeIndex(conn, int(dim_row[0]))

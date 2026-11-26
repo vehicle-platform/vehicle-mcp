@@ -33,6 +33,12 @@ PASSAGE_PREFIX = "passage: "
 QUERY_MAX_TOKENS = 128
 PASSAGE_MAX_TOKENS = 512
 BATCH_SIZE = 16
+# Cosine floor for multilingual-e5-small. e5 similarities live in a narrow 0.80-0.90 band, so
+# an absolute floor is only meaningful per model. Calibrated with `vehicle-mcp-index eval`
+# (grid in tests/retrieval_eval/tuning.json): chosen on the `tune` split, then vetoed by the
+# `holdout` split, which showed that floors above 0.83 cost more than 0.05 holdout recall@5 for
+# little extra noise reduction. Re-calibrate when the model revision changes.
+E5_MIN_COSINE = 0.83
 
 
 class Embedder(Protocol):
@@ -40,6 +46,7 @@ class Embedder(Protocol):
 
     model_id: str
     dim: int
+    min_similarity: float  # cosine floor below which a vector hit is noise for this model
 
     def embed_queries(self, texts: Sequence[str]) -> list[list[float]]: ...
 
@@ -112,6 +119,7 @@ class OnnxE5Embedder:
 
     model_id = MODEL_ID
     dim = MODEL_DIM
+    min_similarity = E5_MIN_COSINE
 
     def __init__(self, model_dir: Path | None = None, threads: int | None = None) -> None:
         directory = model_dir or default_model_dir()
