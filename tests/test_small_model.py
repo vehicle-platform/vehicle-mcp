@@ -18,9 +18,10 @@ from vehicle_mcp.server import build_server
 from vehicle_mcp.specs import MAX_ARGUMENT_CHARS, MAX_DESCRIPTION_CHARS
 from vehicle_mcp.tools import VehicleTools
 
-# Measured name + description + input schema of all 12 tools: 3188 characters. The budget is
-# that plus 10 %. The 10 tools before this change measured 6254 characters.
-SPEC_BUDGET_CHARS = 3500
+# Measured name + description + input schema of the first 12 tools: 3188 characters, budget
+# 3500 (that plus 10 %). explain_context adds 369 characters, so the budget grows by 369 + 10 %.
+# The 10 tools before the small-model specs measured 6254 characters.
+SPEC_BUDGET_CHARS = 3906
 
 
 def _client(server: FakeVehicleServer) -> VehicleServerClient:

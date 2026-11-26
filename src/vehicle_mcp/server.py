@@ -46,6 +46,7 @@ def build_server(source: HistorySource) -> MCPServer:
         tools.get_fault,
         tools.get_data_card,
         tools.check_symptom,
+        tools.explain_context,
     ):
         server.tool()(tool)
     apply_specs(server)
