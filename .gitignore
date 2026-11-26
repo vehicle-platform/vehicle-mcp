@@ -10,3 +10,13 @@ build/
 .coverage
 coverage.xml
 .mypy_cache/
+
+# Knowledge layer (T60, D-033): never commit manuals, indexes, model weights or embeddings.
+manuals/
+*.pdf
+*.sqlite
+*.sqlite3
+*.db
+*.onnx
+*.gguf
+*.safetensors

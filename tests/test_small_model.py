@@ -21,7 +21,8 @@ from vehicle_mcp.tools import VehicleTools
 # Measured name + description + input schema of the first 12 tools: 3188 characters, budget
 # 3500 (that plus 10 %). explain_context adds 369 characters, so the budget grows by 369 + 10 %.
 # The 10 tools before the small-model specs measured 6254 characters.
-SPEC_BUDGET_CHARS = 3906
+# search_knowledge (T60) adds 396 characters, so the budget grows by 396 + 10 % (436).
+SPEC_BUDGET_CHARS = 4342
 
 
 def _client(server: FakeVehicleServer) -> VehicleServerClient:

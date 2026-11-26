@@ -18,6 +18,7 @@ from typing import Any, Literal
 from mcp.server.mcpserver.exceptions import ToolError
 
 from . import explain, matching, untrusted
+from .knowledge.search import DEFAULT_K, MAX_K, MAX_QUERY_CHARS, KnowledgeSearch
 from .position import is_position_name
 from .source import (
     FaultNotAvailable,
@@ -243,8 +244,9 @@ def _compact_fault(entry: dict[str, Any]) -> dict[str, Any]:
 class VehicleTools:
     """Tool implementations bound to one HistorySource."""
 
-    def __init__(self, source: HistorySource) -> None:
+    def __init__(self, source: HistorySource, knowledge: KnowledgeSearch | None = None) -> None:
         self._source = source
+        self._knowledge = knowledge
 
     def _call(self, fetch: Callable[[], Any]) -> Any:
         try:
@@ -1464,3 +1466,30 @@ class VehicleTools:
         if catalog_reason:
             result["catalog_reason"] = catalog_reason
         return result
+
+    def search_knowledge(
+        self, query: str, locale: str = "en", k: int = DEFAULT_K
+    ) -> dict[str, Any]:
+        """Hybrid search (BM25 + vector, fused with RRF) over the local knowledge index.
+
+        Indexed: the fault catalog (displayable entries in full; unconfirmed ones only as
+        complaint phrases that point to measurable signals, never an id or wording), Markdown
+        docs the operator configured, and the rider's own manuals (kept only in the local
+        index, shown as snippets of at most 300 characters). Each hit has `snippet`, `score`,
+        and a `citation` {source, title, section, url_or_path}; catalog hits carry `fault_id`
+        for `get_fault`. `locale` searches that language plus English (`any` for all). These
+        are references, not measurements and never a diagnosis; numbers come from the data
+        tools. Without the optional `rag` extra, the embedding model or an index the result is
+        `available: false` with a reason.
+        """
+        text = query.strip()
+        if not text:
+            raise ToolError("query must not be empty")
+        if self._knowledge is None:
+            return {
+                "kind": "knowledge_search",
+                "available": False,
+                "reason": "the knowledge layer is not configured",
+            }
+        count = max(1, min(int(k), MAX_K))
+        return self._knowledge.search(text[:MAX_QUERY_CHARS], locale, count)
