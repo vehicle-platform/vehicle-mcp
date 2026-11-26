@@ -45,6 +45,10 @@ DESCRIPTIONS: dict[str, str] = {
         "Match a rider's complaint (noise, smell, light, hot, weak) "
         "to catalog causes and ride data. Not a diagnosis."
     ),
+    "explain_context": (
+        "Context to explain a reading: ride numbers, conditions, past rides, catalog "
+        "causes. For why or is it normal. Not a diagnosis."
+    ),
 }
 
 # argument name -> description, per tool. Self-explanatory arguments (ride ids, windows) have none.
@@ -60,6 +64,10 @@ ARGUMENTS: dict[str, dict[str, str]] = {
         "complaint": "The rider's own words.",
         "session_id": "Omit for the latest ride.",
         "locale": "Language code: en, tr.",
+    },
+    "explain_context": {
+        "topic_or_signal": "Topic word or signal name, e.g. coolant.",
+        "session_id": "Omit for the latest ride.",
     },
 }
 

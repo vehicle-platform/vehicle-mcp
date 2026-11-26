@@ -17,7 +17,7 @@ from typing import Any, Literal
 
 from mcp.server.mcpserver.exceptions import ToolError
 
-from . import matching, untrusted
+from . import explain, matching, untrusted
 from .position import is_position_name
 from .source import (
     FaultNotAvailable,
@@ -204,6 +204,14 @@ _UNCONFIRMED_REFUSED = (
     "catalog entries were matched"
 )
 TREND_POINTS = 200
+_EXPLAIN_NOTE = (
+    "Context for interpreting a reading, not a diagnosis. Catalog entries are possible causes "
+    "only; none is confirmed present. " + _FAULT_NOTE
+)
+_NO_REFERENCES = (
+    "vehicle-server does not expose reference values (thresholds, fan-on range, nominal "
+    "ranges) for signals yet, so none are given here and none are hard-coded"
+)
 
 
 def _symptom_summary(symptom: Any) -> str:
@@ -1072,7 +1080,7 @@ class VehicleTools:
 
     def _symptom_match(
         self,
-        score: float,
+        score: float | None,
         entry: dict[str, Any],
         phrase: str | None,
         session: str | None,
@@ -1085,9 +1093,10 @@ class VehicleTools:
             "needs": [n for n in entry.get("needs") or [] if isinstance(n, str)],
             "rider_text": entry.get("rider_text"),
             "action": entry.get("action"),
-            "matched_phrase": phrase,
-            "match_score": quantity("match_score", "match score", "ratio", score),
         }
+        if score is not None:
+            item["matched_phrase"] = phrase
+            item["match_score"] = quantity("match_score", "match score", "ratio", score)
         needs = item["needs"]
         if not needs:
             item["measurable"] = False
@@ -1109,3 +1118,349 @@ class VehicleTools:
         if not cards:
             item["measurement_note"] = "The chosen ride has none of the signals this entry needs."
         return item
+
+    # -- explain context (D-131 item 2) ---------------------------------------------------
+
+    @staticmethod
+    def _explain_signal(query: str, series: list[dict[str, Any]]) -> dict[str, Any] | None:
+        """The series a topic word or signal name selects: exact name first, then the topic."""
+        wanted = matching.normalise(query)
+        for entry in series:
+            name = entry["name"]
+            if wanted in {matching.normalise(name), matching.normalise(_human(name))}:
+                return entry
+        key = matching.canonical_topic(query)
+        if key is None:
+            return None
+        picked = [e for e in series if matching.name_matches(key, e["name"])]
+        picked.sort(key=lambda e: e.get("kind") != "did")  # stable: raw signals first
+        return picked[0] if picked else None
+
+    @staticmethod
+    def _explain_topic(name: str, query: str) -> str | None:
+        key = matching.canonical_topic(query)
+        if key is not None and matching.name_matches(key, name):
+            return key
+        return next((k for k in explain.TOPIC_PRIORITY if matching.name_matches(k, name)), None)
+
+    def _time_in_bands(self, summary: Any, signal: str) -> list[dict[str, Any]]:
+        """Stored time-at-level bands of this signal (bin edges come from defs via the server)."""
+        if not isinstance(summary, dict) or not isinstance(summary.get("signals"), list):
+            return []
+        for item in summary["signals"]:
+            axes = item.get("axes") if isinstance(item, dict) else None
+            if (
+                not isinstance(axes, list)
+                or len(axes) != 1
+                or axes[0].get("input") != signal
+                or item.get("kind") != "binned"
+                or not isinstance(axes[0].get("edges"), list)
+                or not isinstance(item.get("cells"), list)
+            ):
+                continue
+            edges, unit = axes[0]["edges"], axes[0].get("unit")
+            cells = {c.get("index"): _number(c.get("value")) for c in item["cells"]}
+            total = _number(item.get("total_s")) or sum(v or 0 for v in cells.values())
+            bands: list[dict[str, Any]] = []
+            for index, edge in enumerate(edges):
+                seconds = cells.get(index)
+                if not seconds or not isinstance(edge, list) or len(edge) != 2:  # noqa: PLR2004
+                    continue
+                low, high = edge
+                slug = f"{low:g}_to_{high:g}".replace("-", "minus_")
+                bands.append(
+                    {
+                        "from": low,
+                        "to": high,
+                        "unit": unit,
+                        "time": quantity(
+                            f"{_slug(signal)}_time_{slug}",
+                            f"time from {low:g} to {high:g}",
+                            "s",
+                            seconds,
+                        ),
+                        "share": quantity(
+                            f"{_slug(signal)}_share_{slug}",
+                            f"share of ride time from {low:g} to {high:g}",
+                            "%",
+                            100 * seconds / total if total else None,
+                        ),
+                    }
+                )
+            return bands
+        return []
+
+    def _related_conditions(
+        self,
+        topic: str | None,
+        signal: str,
+        session: str,
+        summary: Any,
+        series: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        """Ride quantities that bear on the topic, only those the server reports for the ride."""
+        if topic is None:
+            return []
+        scalars, fragments = explain.RELATED[topic]
+        reported: dict[str, dict[str, Any]] = {}
+        if isinstance(summary, dict) and isinstance(summary.get("signals"), list):
+            reported = {
+                item["name"]: item
+                for item in summary["signals"]
+                if isinstance(item, dict)
+                and isinstance(item.get("name"), str)
+                and not is_position_name(item["name"])
+                and item.get("kind") == "scalar"
+                and _number(item.get("value")) is not None
+            }
+        out = [
+            quantity(n, n.replace("_", " "), reported[n].get("unit"), reported[n]["value"])
+            for n in scalars
+            if n in reported
+        ]
+        for fragment in fragments:
+            entry = next(
+                (
+                    e
+                    for e in sorted(series, key=lambda e: e.get("kind") != "did")
+                    if fragment in e["name"].lower() and e["name"] != signal
+                ),
+                None,
+            )
+            if entry is None:
+                continue
+            raw = self._raw_stats(session, entry["name"])
+            out += _stat_quantities(entry["name"], entry.get("unit"), raw, ("mean", "max"))
+        return out
+
+    def _explain_history(
+        self, session: str, created: str | None, signal: str, unit: str | None, this: dict[str, Any]
+    ) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
+        """The same reading on up to ten previous rides, newest first, with this ride's rank.
+
+        Also returns the raw comparison per measure, which decides the catalog direction."""
+        rows = [
+            r
+            for r in self._call(self._source.sessions)
+            if isinstance(r, dict) and isinstance(r.get("session_id"), str)
+        ]
+        dated = [(c, r) for r in rows if (c := _parse_created(r.get("created_utc"))) is not None]
+        here = _parse_created(created)
+        candidates = [
+            r
+            for c, r in sorted(dated, key=lambda item: item[0], reverse=True)
+            if r["session_id"] != session and (here is None or c < here)
+        ]
+        rides: list[dict[str, Any]] = []
+        for row in candidates[: explain.MAX_HISTORY_SCAN]:
+            if len(rides) >= explain.MAX_HISTORY_RIDES:
+                break
+            try:
+                raw = self._raw_stats(row["session_id"], signal)
+            except ToolError:
+                continue  # the ride has no such signal (or the server failed): not comparable
+            if any(_number(raw.get(m)) is None for m in explain.HISTORY_MEASURES):
+                continue
+            rides.append(
+                {
+                    "session_id": row["session_id"],
+                    "ride_date": row.get("created_utc"),
+                    "values": _stat_quantities(signal, unit, raw, explain.HISTORY_MEASURES),
+                    "_raw": raw,
+                }
+            )
+        if not rides:
+            return {
+                "count": 0,
+                "rides": [],
+                "reason": "no previous ride with this signal on the server",
+            }, {}
+        slug, label = _slug(signal), _human(signal)
+        comparison: list[dict[str, Any]] = []
+        raw_cmp: dict[str, dict[str, Any]] = {}
+        for measure in explain.HISTORY_MEASURES:
+            cmp = explain.compare(this[measure], [r["_raw"][measure] for r in rides])
+            raw_cmp[measure] = cmp
+            word = _STAT_WORDS[measure]
+            comparison.append(
+                {
+                    "measure": measure,
+                    "rank": cmp["rank"],
+                    "of": cmp["of"],
+                    "this_ride": quantity(
+                        f"{slug}_{measure}", f"{label} {word}", unit, this[measure]
+                    ),
+                    "previous_min": quantity(
+                        f"{slug}_{measure}_previous_min",
+                        f"{label} {word}, previous rides' lowest",
+                        unit,
+                        cmp["previous_min"],
+                    ),
+                    "previous_median": quantity(
+                        f"{slug}_{measure}_previous_median",
+                        f"{label} {word}, previous rides' median",
+                        unit,
+                        cmp["previous_median"],
+                    ),
+                    "previous_max": quantity(
+                        f"{slug}_{measure}_previous_max",
+                        f"{label} {word}, previous rides' highest",
+                        unit,
+                        cmp["previous_max"],
+                    ),
+                    "outside_previous_range": cmp["outside_previous_range"],
+                }
+            )
+        for ride in rides:
+            ride.pop("_raw")
+        history = {
+            "count": len(rides),
+            "rides": rides,
+            "rank_note": "rank 1 is the highest value among this ride and the previous rides",
+            "comparison": comparison,
+        }
+        return history, raw_cmp
+
+    def _explain_catalog(
+        self,
+        signal: str,
+        shown: dict[str, str],
+        session: str,
+        index: dict[str, dict[str, Any]],
+    ) -> tuple[list[dict[str, Any]], str | None]:
+        """Displayable entries as in check_symptom, unconfirmed ones only as data_only."""
+        try:
+            payload, fallback = self._symptom_catalog()
+        except FaultNotAvailable as exc:
+            return [], str(exc)
+        except SourceError as exc:
+            return [], f"the fault catalog could not be read: {exc}"
+        if not isinstance(payload, dict) or not isinstance(payload.get("entries"), list):
+            return [], "vehicle-server returned an unexpected fault catalog response"
+        if not shown:
+            return [], "the data shows no direction (up, down or unstable) the catalog can match"
+        matched = [
+            e
+            for e in payload["entries"]
+            if isinstance(e, dict) and explain.entry_matches(e, signal, shown)
+        ]
+        shown_entries = [e for e in matched if fallback or e.get("displayable") is True]
+        unconfirmed = [e for e in matched if e not in shown_entries]
+
+        def severity(entry: dict[str, Any]) -> int:
+            rating = entry.get("rating")
+            value = rating.get("severity") if isinstance(rating, dict) else None
+            return int(value) if isinstance(value, (int, float)) else 0
+
+        shown_entries.sort(key=lambda e: (-severity(e), str(e.get("id"))))
+        items = [
+            self._symptom_match(None, e, None, session, index)
+            for e in shown_entries[: explain.MAX_CATALOG_ENTRIES]
+        ]
+        data_only = self._data_only_match(unconfirmed, session, index)
+        if data_only is not None:
+            items.append(data_only)
+        for item in items:  # the explained signal's numbers are in `reading`, not repeated
+            cards = item.get("signals")
+            if isinstance(cards, list) and any(c.get("signal") == signal for c in cards):
+                item["signals"] = [c for c in cards if c.get("signal") != signal]
+                item["explained_signal_in_reading"] = signal
+        reason = None
+        if fallback:
+            reason = _UNCONFIRMED_REFUSED
+        if not items:
+            reason = "no catalog entry has a symptom on this signal in the direction the data shows"
+        return items, reason
+
+    def explain_context(
+        self, topic_or_signal: str, session_id: str | None = None
+    ) -> dict[str, Any]:
+        """Context for interpreting one reading: the ride's numbers, its conditions, history.
+
+        Resolves the topic word (as `get_data_card`) or a signal name in the chosen or newest
+        ride. Returns `reading` (min, mean, max, last, trend and stored time-at-level bands),
+        `conditions` (ride quantities bearing on the topic, only those the server reports),
+        `history` (the same reading on up to ten previous rides, with this ride's rank),
+        `references` (values defs exposes through the server; none today), and `catalog`
+        (displayable entries whose symptom signal and direction match what the data shows;
+        unconfirmed ones only as a `data_only` item). Context for an interpretation, never a
+        diagnosis. Every number is computed here (invariant 7).
+        """
+        query = topic_or_signal.strip()
+        if not query:
+            raise ToolError("topic_or_signal must not be empty")
+        if is_position_name(query):
+            raise _position_error(query)
+        base: dict[str, Any] = {
+            "kind": "explain_context",
+            "diagnosis": False,
+            "note": _EXPLAIN_NOTE,
+        }
+        session, created = self._resolve_session(session_id)
+        if session is None:
+            return {
+                **base,
+                "available": False,
+                "reason": "vehicle-server has no recorded rides yet",
+            }
+
+        _, series, _ = self._series_index(session)
+        entry = self._explain_signal(query, series)
+        if entry is None:
+            return {
+                **base,
+                "available": False,
+                "session_id": session,
+                "reason": f"no signal in this ride matches {query!r}; topics: "
+                + ", ".join(matching.TOPIC_KEYS),
+                "available_signals": [_human(e["name"]) for e in series[:MAX_CARD_NAMES]],
+            }
+        signal, unit = entry["name"], entry.get("unit")
+        topic = self._explain_topic(signal, query)
+
+        card = self._need_card(session, entry, [])
+        raw = self._raw_stats(session, signal)
+        this = {m: raw[m] for m in explain.HISTORY_MEASURES}
+        try:
+            summary = self._source.ride_summary(session)
+        except SourceError:
+            summary = None
+        reading: dict[str, Any] = {
+            "unit": unit,
+            "values": card["values"],
+            "trend": card["trend_over_ride"],
+            "trend_basis": "first quarter of the ride against the last quarter",
+            "time_in_bands": self._time_in_bands(summary, signal),
+        }
+        if card.get("approximate_reason"):
+            reading["approximate_reason"] = card["approximate_reason"]
+
+        history: dict[str, Any]
+        comparisons: dict[str, dict[str, Any]] = {}
+        if all(_number(v) is not None for v in this.values()):
+            history, comparisons = self._explain_history(session, created, signal, unit, this)
+        else:
+            history = {"count": 0, "rides": [], "reason": "this ride has no numeric samples"}
+        shown = explain.directions_shown(reading["trend"], comparisons)
+        catalog, catalog_reason = self._explain_catalog(
+            signal, shown, session, {e["name"]: e for e in series}
+        )
+        result: dict[str, Any] = {
+            **base,
+            "available": True,
+            "topic": topic,
+            "signal": signal,
+            "label": _human(signal),
+            "session_id": session,
+            "ride_date": created,
+            "reading": reading,
+            "conditions": self._related_conditions(topic, signal, session, summary, series),
+            "history": history,
+            "references": [],
+            "references_reason": _NO_REFERENCES,
+            "directions_shown": shown,
+            "catalog": catalog,
+        }
+        if catalog_reason:
+            result["catalog_reason"] = catalog_reason
+        return result
