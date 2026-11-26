@@ -23,7 +23,14 @@ from vehicle_mcp.source import HistorySource, SourceError, UnconfirmedRefused
 
 from . import KnowledgeUnavailable
 from .embedder import Embedder, OnnxE5Embedder, fetch_model, model_present, verify_model
-from .eval_retrieval import DEFAULT_K, evaluate_all, format_table, report_to_json
+from .eval_retrieval import (
+    DEFAULT_K,
+    DEFAULT_QUERIES_DIR,
+    evaluate_all,
+    format_table,
+    report_to_json,
+    without_holdout,
+)
 from .settings import default_db_path, default_model_dir
 from .sources import CATALOG_SOURCE, DOCS_SOURCE, catalog_chunks, docs_chunks, pdf_chunks
 from .store import Chunk, KnowledgeIndex, create_index
@@ -102,6 +109,8 @@ def build(
         if not args.no_catalog and client_factory is not None:
             payload, refused = _fetch_catalog(client_factory)
             chunks = catalog_chunks(payload, all_displayable=refused)
+            if args.exclude_holdout:
+                chunks = without_holdout(chunks, DEFAULT_QUERIES_DIR, ("en", "tr"))
             _replace(index, embedder, CATALOG_SOURCE, chunks, log)
         docs: list[Chunk] = []
         for directory in args.docs:
@@ -133,6 +142,11 @@ def _parser() -> argparse.ArgumentParser:
         "--local-pdf", action="append", default=[], metavar="PDF", help="your own manual"
     )
     b.add_argument("--pdf-locale", default="en")
+    b.add_argument(
+        "--exclude-holdout",
+        action="store_true",
+        help="eval index only: leave the held-out complaint phrases (tests/retrieval_eval) out",
+    )
     b.add_argument("--model-dir", help="override the model cache directory")
     ev = sub.add_parser("eval", help="evaluate retrieval recall@1/@3/@5 and MRR per locale")
     ev.add_argument(
@@ -140,14 +154,21 @@ def _parser() -> argparse.ArgumentParser:
     )
     ev.add_argument(
         "--queries-dir",
-        default="tests/retrieval_eval",
-        help="directory holding queries.json and locales/<locale>.json",
+        default=str(DEFAULT_QUERIES_DIR),
+        help="directory holding queries.json and locales/<locale>.json "
+        "(default: tests/retrieval_eval of the source checkout)",
     )
     ev.add_argument(
         "--locales",
         nargs="+",
         default=["en", "tr"],
         help="locales to evaluate (default: en tr)",
+    )
+    ev.add_argument(
+        "--split",
+        choices=["tune", "holdout", "both"],
+        default="both",
+        help="query split to report (default: both; tune parameters on `tune` only)",
     )
     ev.add_argument("--k", type=int, default=DEFAULT_K, help="top-k cutoff (default: 5)")
     ev.add_argument("--model-dir", help="override the model cache directory")
@@ -195,7 +216,10 @@ def main(
             if not queries_dir.is_dir():
                 log(f"vehicle-mcp-index: queries directory {queries_dir!s} does not exist")
                 return 2
-            reports = evaluate_all(db, queries_dir, args.locales, embedder=embedder, k=args.k)
+            splits = ("tune", "holdout") if args.split == "both" else (args.split,)
+            reports = evaluate_all(
+                db, queries_dir, args.locales, embedder=embedder, k=args.k, splits=splits
+            )
             if args.as_json:
                 print(report_to_json(reports))
             else:
@@ -203,7 +227,7 @@ def main(
                 if args.show_misses:
                     for rep in reports:
                         if rep.misses:
-                            print(f"\n[{rep.locale} non-rank-1: {len(rep.misses)}]")
+                            print(f"\n[{rep.locale}/{rep.split} non-rank-1: {len(rep.misses)}]")
                             for m in rep.misses:
                                 print(
                                     f"  {m.id} (rank={m.rank}): {m.query!r} "
