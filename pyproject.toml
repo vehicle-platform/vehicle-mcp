@@ -12,6 +12,16 @@ dependencies = [
 
 [project.scripts]
 vehicle-mcp = "vehicle_mcp.server:main"
+vehicle-mcp-index = "vehicle_mcp.knowledge.indexer:cli"
+
+[project.optional-dependencies]
+rag = [
+    "numpy>=1.26",
+    "onnxruntime>=1.20",
+    "pypdf>=5",
+    "sqlite-vec>=0.1.6",
+    "tokenizers>=0.20",
+]
 
 [build-system]
 requires = ["uv_build>=0.8.17,<0.9.0"]
@@ -39,6 +49,7 @@ select = ["E", "F", "I", "UP", "B", "C90", "PLR0912", "PLR0913", "PLR0915"]
 testpaths = ["tests"]
 markers = [
     "position_vectors: the defs position-rule golden vectors (T22)",
+    "slow: needs the real embedding model (run with --run-slow after fetch-model)",
     "fuzz: Hypothesis properties (bounded in PR CI; HYPOTHESIS_PROFILE=deep for the deep run)",
 ]
 
@@ -54,6 +65,10 @@ max-args = 10
 python_version = "3.11"
 strict = true
 files = ["src"]
+
+[[tool.mypy.overrides]]
+module = ["onnxruntime", "sqlite_vec", "pypdf"]
+ignore_missing_imports = true
 
 [tool.coverage.run]
 source = ["src"]

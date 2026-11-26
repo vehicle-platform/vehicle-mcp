@@ -42,6 +42,7 @@ def test_registers_exactly_the_read_only_tools() -> None:
         "get_data_card",
         "check_symptom",
         "explain_context",
+        "search_knowledge",
     }
     assert all("position" not in tool.name for tool in tools)
 

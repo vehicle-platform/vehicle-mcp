@@ -45,6 +45,9 @@ DESCRIPTIONS: dict[str, str] = {
         "Match a rider's complaint (noise, smell, light, hot, weak) "
         "to catalog causes and ride data. Not a diagnosis."
     ),
+    "search_knowledge": (
+        "Search catalog, docs and manuals for text with citations. References, not measurements."
+    ),
     "explain_context": (
         "Context to explain a reading: ride numbers, conditions, past rides, catalog "
         "causes. For why or is it normal. Not a diagnosis."
@@ -64,6 +67,11 @@ ARGUMENTS: dict[str, dict[str, str]] = {
         "complaint": "The rider's own words.",
         "session_id": "Omit for the latest ride.",
         "locale": "Language code: en, tr.",
+    },
+    "search_knowledge": {
+        "query": "Question or words, any language.",
+        "locale": "Language code: en, tr, or any.",
+        "k": "Number of hits, 1 to 10.",
     },
     "explain_context": {
         "topic_or_signal": "Topic word or signal name, e.g. coolant.",

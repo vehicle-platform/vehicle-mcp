@@ -54,6 +54,19 @@ def old_tools(old_server: FakeVehicleServer) -> VehicleTools:
     client.close()
 
 
+def pytest_addoption(parser: pytest.Parser) -> None:
+    parser.addoption("--run-slow", action="store_true", help="run tests that need the real model")
+
+
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    if config.getoption("--run-slow"):
+        return
+    skip = pytest.mark.skip(reason="slow: needs the real embedding model (--run-slow)")
+    for item in items:
+        if "slow" in item.keywords:
+            item.add_marker(skip)
+
+
 # Hypothesis profiles (T31): bounded for PR CI; HYPOTHESIS_PROFILE=deep for the deep run.
 settings.register_profile(
     "ci", max_examples=40, deadline=None, suppress_health_check=[HealthCheck.too_slow]
