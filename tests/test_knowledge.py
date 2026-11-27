@@ -833,3 +833,149 @@ def test_shipped_retrieval_eval_dataset_integrity_and_split() -> None:
     assert sum(1 for q in en_q if q.split == "test") >= 30
     assert sum(1 for q in en_q if q.split == "holdout") == 62
     assert all(q.expected for q in en_q)
+
+
+def test_retrieval_settings_defaults_pin_baseline_and_validate_env(tmp_path: Path) -> None:
+    """G8-3a: default RetrievalSettings reproduce baseline scoring and env validation is strict."""
+    from vehicle_mcp.knowledge.settings import (
+        DEFAULT_FTS_POOL,
+        DEFAULT_FTS_WEIGHT,
+        DEFAULT_LEXICAL_TOP_N,
+        DEFAULT_RRF_K,
+        DEFAULT_USE_PREFIXES,
+        DEFAULT_VECTOR_POOL_MIN,
+        DEFAULT_VECTOR_WEIGHT,
+        RetrievalSettings,
+        load_retrieval_settings,
+    )
+
+    defaults = load_retrieval_settings({})
+    assert defaults == RetrievalSettings(
+        rrf_k=60,
+        fts_weight=1.0,
+        vector_weight=1.0,
+        fts_pool=50,
+        vector_pool_min=30,
+        lexical_top_n=2,
+        min_similarity=None,
+        use_prefixes=True,
+    )
+    assert (
+        defaults.rrf_k == DEFAULT_RRF_K
+        and defaults.fts_weight == DEFAULT_FTS_WEIGHT
+        and defaults.vector_weight == DEFAULT_VECTOR_WEIGHT
+        and defaults.fts_pool == DEFAULT_FTS_POOL
+        and defaults.vector_pool_min == DEFAULT_VECTOR_POOL_MIN
+        and defaults.lexical_top_n == DEFAULT_LEXICAL_TOP_N
+        and defaults.use_prefixes is DEFAULT_USE_PREFIXES
+    )
+
+    # Pin exact baseline score against explicit default RetrievalSettings on the same index.
+    db, fake = _built(tmp_path)
+    base_res = KnowledgeSearch(db, embedder_factory=lambda: fake).search("tapping sound at idle")
+    explicit_res = KnowledgeSearch(
+        db, embedder_factory=lambda: fake, retrieval=RetrievalSettings()
+    ).search("tapping sound at idle")
+    assert base_res == explicit_res
+    assert base_res["hits"]
+    # Rank 1 in both BM25 and vector with RRF k=60 yields 2 / 61 = 0.03279.
+    assert base_res["hits"][0]["score"] == round(2.0 / 61.0, 5)
+
+    # Valid env overrides parse cleanly.
+    custom = load_retrieval_settings(
+        {
+            "VEHICLE_MCP_RAG_RRF_K": "10",
+            "VEHICLE_MCP_RAG_FTS_WEIGHT": "0.5",
+            "VEHICLE_MCP_RAG_VECTOR_WEIGHT": "2.0",
+            "VEHICLE_MCP_RAG_FTS_POOL": "25",
+            "VEHICLE_MCP_RAG_VECTOR_POOL_MIN": "15",
+            "VEHICLE_MCP_RAG_LEXICAL_TOP_N": "5",
+            "VEHICLE_MCP_RAG_MIN_SIMILARITY": "0.75",
+            "VEHICLE_MCP_RAG_USE_PREFIXES": "false",
+        }
+    )
+    assert custom == RetrievalSettings(
+        rrf_k=10,
+        fts_weight=0.5,
+        vector_weight=2.0,
+        fts_pool=25,
+        vector_pool_min=15,
+        lexical_top_n=5,
+        min_similarity=0.75,
+        use_prefixes=False,
+    )
+
+    # Invalid overrides fail loudly with ValueError.
+    for bad_env in (
+        {"VEHICLE_MCP_RAG_RRF_K": "0"},
+        {"VEHICLE_MCP_RAG_RRF_K": "abc"},
+        {"VEHICLE_MCP_RAG_FTS_WEIGHT": "-0.1"},
+        {"VEHICLE_MCP_RAG_VECTOR_WEIGHT": "nan"},
+        {"VEHICLE_MCP_RAG_FTS_POOL": "-1"},
+        {"VEHICLE_MCP_RAG_MIN_SIMILARITY": "1.5"},
+        {"VEHICLE_MCP_RAG_USE_PREFIXES": "maybe"},
+    ):
+        with pytest.raises(ValueError):
+            load_retrieval_settings(bad_env)
+
+
+def test_retrieval_modes_rrf_k_weights_and_prefix_toggle(tmp_path: Path) -> None:
+    """G8-3a: verify vector-only, FTS-only, custom RRF k, and e5 prefix toggle."""
+    from vehicle_mcp.knowledge.settings import RetrievalSettings
+
+    db, fake = _built(tmp_path)
+    q = "tapping sound at idle"
+
+    # RRF k=10 gives higher score (2 / 11) than default k=60 (2 / 61).
+    k10 = KnowledgeSearch(
+        db, embedder_factory=lambda: fake, retrieval=RetrievalSettings(rrf_k=10)
+    ).search(q)
+    assert k10["hits"][0]["score"] == round(2.0 / 11.0, 5)
+
+    # Vector-only (fts_weight=0): score is 1/(60+rank) and bm25_rank is None.
+    vec_cfg = RetrievalSettings(fts_weight=0.0, vector_weight=1.0)
+    idx_vec = open_index(db, model_id=fake.model_id, retrieval=vec_cfg)
+    try:
+        vec_hits = idx_vec.search(q, fake.embed_queries([q])[0], k=5)
+    finally:
+        idx_vec.close()
+    assert vec_hits and all(h.bm25_rank is None and h.vector_rank is not None for h in vec_hits)
+
+    # FTS-only (vector_weight=0): score is 1/(60+rank) and vector_rank is None.
+    fts_cfg = RetrievalSettings(fts_weight=1.0, vector_weight=0.0, lexical_top_n=5)
+    idx_fts = open_index(db, model_id=fake.model_id, retrieval=fts_cfg)
+    try:
+        fts_hits = idx_fts.search(q, fake.embed_queries([q])[0], k=5)
+    finally:
+        idx_fts.close()
+    assert fts_hits and all(h.vector_rank is None and h.bm25_rank is not None for h in fts_hits)
+
+    # Prefix toggle on OnnxE5Embedder: verifies whether `query: ` / `passage: ` are prepended.
+    seen_texts: list[list[str]] = []
+
+    class _RecordingTokenizer(_Tokenizer):
+        def encode_batch(self, texts: list[str]) -> list[_Enc]:
+            seen_texts.append(list(texts))
+            return super().encode_batch(texts)
+
+    e_on = object.__new__(emb.OnnxE5Embedder)
+    e_on._np = np
+    e_on._session = _Session()
+    e_on._input_names = {"input_ids", "attention_mask", "token_type_ids"}
+    e_on._tokenizer = _RecordingTokenizer()
+    e_on.embed_queries(["overheating"])
+    e_on.embed_passages(["coolant temperature high"])
+    assert seen_texts[0] == ["query: overheating"]
+    assert seen_texts[1] == ["passage: coolant temperature high"]
+
+    e_off = object.__new__(emb.OnnxE5Embedder)
+    e_off._np = np
+    e_off._session = _Session()
+    e_off._input_names = {"input_ids", "attention_mask", "token_type_ids"}
+    e_off._tokenizer = _RecordingTokenizer()
+    e_off._query_prefix = ""
+    e_off._passage_prefix = ""
+    e_off.embed_queries(["overheating"])
+    e_off.embed_passages(["coolant temperature high"])
+    assert seen_texts[2] == ["overheating"]
+    assert seen_texts[3] == ["coolant temperature high"]

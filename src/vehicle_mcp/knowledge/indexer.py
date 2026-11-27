@@ -31,7 +31,17 @@ from .eval_retrieval import (
     report_to_json,
     without_holdout,
 )
-from .settings import default_db_path, default_model_dir
+from .settings import (
+    DEFAULT_FTS_POOL,
+    DEFAULT_FTS_WEIGHT,
+    DEFAULT_LEXICAL_TOP_N,
+    DEFAULT_RRF_K,
+    DEFAULT_VECTOR_POOL_MIN,
+    DEFAULT_VECTOR_WEIGHT,
+    RetrievalSettings,
+    default_db_path,
+    default_model_dir,
+)
 from .sources import CATALOG_SOURCE, DOCS_SOURCE, catalog_chunks, docs_chunks, pdf_chunks
 from .store import Chunk, KnowledgeIndex, create_index
 
@@ -148,6 +158,11 @@ def _parser() -> argparse.ArgumentParser:
         help="eval index only: leave the held-out complaint phrases (tests/retrieval_eval) out",
     )
     b.add_argument("--model-dir", help="override the model cache directory")
+    b.add_argument(
+        "--no-prefixes",
+        action="store_true",
+        help="disable e5 `query: `/`passage: ` prefixes when embedding passages",
+    )
     ev = sub.add_parser("eval", help="evaluate retrieval recall@1/@3/@5 and MRR per locale")
     ev.add_argument(
         "--db", help="index file (default: user data dir, or $VEHICLE_MCP_KNOWLEDGE_DB)"
@@ -171,6 +186,45 @@ def _parser() -> argparse.ArgumentParser:
         help="query split to report (default: all; tune parameters on `tune` only)",
     )
     ev.add_argument("--k", type=int, default=DEFAULT_K, help="top-k cutoff (default: 5)")
+    ev.add_argument("--rrf-k", type=int, default=DEFAULT_RRF_K, help="RRF constant k (default: 60)")
+    ev.add_argument(
+        "--fts-weight",
+        type=float,
+        default=DEFAULT_FTS_WEIGHT,
+        help="RRF weight of the FTS arm (default: 1.0; 0 = vector-only)",
+    )
+    ev.add_argument(
+        "--vector-weight",
+        type=float,
+        default=DEFAULT_VECTOR_WEIGHT,
+        help="RRF weight of the vector arm (default: 1.0; 0 = FTS-only)",
+    )
+    ev.add_argument(
+        "--fts-pool", type=int, default=DEFAULT_FTS_POOL, help="BM25 candidate pool size"
+    )
+    ev.add_argument(
+        "--vector-pool-min",
+        type=int,
+        default=DEFAULT_VECTOR_POOL_MIN,
+        help="minimum vector candidate pool size",
+    )
+    ev.add_argument(
+        "--lexical-top-n",
+        type=int,
+        default=DEFAULT_LEXICAL_TOP_N,
+        help="top BM25 groups eligible on lexical evidence alone (default: 2)",
+    )
+    ev.add_argument(
+        "--min-similarity",
+        type=float,
+        default=None,
+        help="override cosine similarity floor (default: embedder default 0.83)",
+    )
+    ev.add_argument(
+        "--no-prefixes",
+        action="store_true",
+        help="disable e5 `query: `/`passage: ` prefixes when embedding queries",
+    )
     ev.add_argument("--model-dir", help="override the model cache directory")
     ev.add_argument("--json", action="store_true", dest="as_json", help="emit JSON report")
     ev.add_argument("--show-misses", action="store_true", help="print non-rank-1 queries")
@@ -205,11 +259,12 @@ def main(
             log(f"model ready{' and verified' if args.verify else ''}")
             return 0
         model_dir = Path(args.model_dir) if args.model_dir else default_model_dir()
+        use_prefixes = not getattr(args, "no_prefixes", False)
         if embedder is None:
             if not model_present(model_dir):
                 log("the embedding model is missing; running fetch-model first")
                 fetch_model(model_dir, log=log)
-            embedder = OnnxE5Embedder(model_dir)
+            embedder = OnnxE5Embedder(model_dir, use_prefixes=use_prefixes)
         if args.command == "eval":
             db = Path(args.db) if args.db else default_db_path()
             queries_dir = Path(args.queries_dir)
@@ -221,8 +276,24 @@ def main(
                 "both": ("tune", "holdout"),
             }
             splits = split_map.get(args.split, (args.split,))
+            retrieval = RetrievalSettings(
+                rrf_k=args.rrf_k,
+                fts_weight=args.fts_weight,
+                vector_weight=args.vector_weight,
+                fts_pool=args.fts_pool,
+                vector_pool_min=args.vector_pool_min,
+                lexical_top_n=args.lexical_top_n,
+                min_similarity=args.min_similarity,
+                use_prefixes=use_prefixes,
+            )
             reports = evaluate_all(
-                db, queries_dir, args.locales, embedder=embedder, k=args.k, splits=splits
+                db,
+                queries_dir,
+                args.locales,
+                embedder=embedder,
+                k=args.k,
+                splits=splits,
+                retrieval=retrieval,
             )
             if args.as_json:
                 print(report_to_json(reports))
@@ -242,7 +313,7 @@ def main(
         if factory is None and not args.no_catalog:
             factory = _default_client
         return build(args, embedder=embedder, client_factory=factory, log=log)
-    except (KnowledgeUnavailable, ConfigError, SourceError) as exc:
+    except (KnowledgeUnavailable, ConfigError, SourceError, ValueError) as exc:
         log(f"vehicle-mcp-index: {exc}")
         return 2
 

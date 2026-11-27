@@ -9,9 +9,14 @@ from typing import Any
 
 from . import KnowledgeUnavailable
 from .embedder import Embedder, OnnxE5Embedder
-from .settings import default_db_path, default_model_dir
+from .settings import (
+    RetrievalSettings,
+    default_db_path,
+    default_model_dir,
+    load_retrieval_settings,
+)
 from .sources import USER_LOCAL
-from .store import DEFAULT_LEXICAL_TOP_N, Hit, open_index, query_tokens
+from .store import Hit, open_index, query_tokens
 
 MAX_SNIPPET_CHARS = 300
 MAX_QUERY_CHARS = 500
@@ -74,14 +79,19 @@ class KnowledgeSearch:
         *,
         embedder_factory: Callable[[], Embedder] | None = None,
         env: Mapping[str, str] | None = None,
-        lexical_top_n: int = DEFAULT_LEXICAL_TOP_N,
+        lexical_top_n: int | None = None,
         min_similarity: float | None = None,
+        retrieval: RetrievalSettings | None = None,
     ) -> None:
         self._db_path = db_path or default_db_path(env)
-        self._factory = embedder_factory or (lambda: OnnxE5Embedder(default_model_dir(env)))
+        cfg = retrieval if retrieval is not None else load_retrieval_settings(env)
+        self._retrieval = cfg
+        self._factory = embedder_factory or (
+            lambda: OnnxE5Embedder(default_model_dir(env), use_prefixes=cfg.use_prefixes)
+        )
         self._embedder: Embedder | None = None
-        self._lexical_top_n = lexical_top_n
-        self._min_similarity = min_similarity
+        self._lexical_top_n = cfg.lexical_top_n if lexical_top_n is None else lexical_top_n
+        self._min_similarity = cfg.min_similarity if min_similarity is None else min_similarity
 
     def _get_embedder(self) -> Embedder:
         if self._embedder is None:
@@ -92,7 +102,7 @@ class KnowledgeSearch:
         base: dict[str, Any] = {"kind": "knowledge_search", "query": query[:MAX_QUERY_CHARS]}
         try:
             embedder = self._get_embedder()
-            index = open_index(self._db_path, model_id=embedder.model_id)
+            index = open_index(self._db_path, model_id=embedder.model_id, retrieval=self._retrieval)
         except KnowledgeUnavailable as exc:
             return {**base, "available": False, "reason": str(exc)}
         floor = (
