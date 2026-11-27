@@ -166,9 +166,9 @@ def _parser() -> argparse.ArgumentParser:
     )
     ev.add_argument(
         "--split",
-        choices=["tune", "holdout", "both"],
-        default="both",
-        help="query split to report (default: both; tune parameters on `tune` only)",
+        choices=["tune", "test", "holdout", "both", "all"],
+        default="all",
+        help="query split to report (default: all; tune parameters on `tune` only)",
     )
     ev.add_argument("--k", type=int, default=DEFAULT_K, help="top-k cutoff (default: 5)")
     ev.add_argument("--model-dir", help="override the model cache directory")
@@ -216,7 +216,11 @@ def main(
             if not queries_dir.is_dir():
                 log(f"vehicle-mcp-index: queries directory {queries_dir!s} does not exist")
                 return 2
-            splits = ("tune", "holdout") if args.split == "both" else (args.split,)
+            split_map: dict[str, tuple[str, ...]] = {
+                "all": ("tune", "test", "holdout"),
+                "both": ("tune", "holdout"),
+            }
+            splits = split_map.get(args.split, (args.split,))
             reports = evaluate_all(
                 db, queries_dir, args.locales, embedder=embedder, k=args.k, splits=splits
             )

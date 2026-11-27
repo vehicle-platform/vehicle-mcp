@@ -21,7 +21,7 @@ from .search import KnowledgeSearch
 from .store import Chunk
 
 DEFAULT_K = 5
-SPLITS = ("tune", "holdout")
+SPLITS = ("tune", "test", "holdout")
 DEFAULT_QUERIES_DIR = Path(__file__).resolve().parents[3] / "tests" / "retrieval_eval"
 
 
@@ -103,7 +103,7 @@ def without_holdout(
     held: set[str] = set()
     for locale in locales:
         answerable, _ = load_query_file(queries_dir, locale)
-        held.update(q.query.strip().lower() for q in answerable if q.split == "holdout")
+        held.update(q.query.strip().lower() for q in answerable if q.split in ("holdout", "test"))
     kept: list[Chunk] = []
     for chunk in chunks:
         if chunk.kind == "complaint" and chunk.text.strip().lower() in held:

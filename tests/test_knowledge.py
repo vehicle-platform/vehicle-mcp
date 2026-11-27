@@ -789,3 +789,45 @@ def test_retrieval_eval_runner_and_cli(tmp_path: Path, capsys: pytest.CaptureFix
     assert _run(["eval", "--db", str(db), "--queries-dir", str(qdir), "--json"]) == 0
     assert json.loads(capsys.readouterr().out)[0]["locale"] == "en"
     assert _run(["eval", "--db", str(db), "--queries-dir", str(tmp_path / "missing")]) == 2
+
+
+def test_exclude_holdout_also_strips_test_split_phrases(tmp_path: Path) -> None:
+    from vehicle_mcp.knowledge import eval_retrieval
+
+    qdir = tmp_path / "eval"
+    (qdir / "locales").mkdir(parents=True)
+    held = {"id": "t-1", "query": "tapping sound at idle", "expected": ["ENG-001"], "split": "test"}
+    (qdir / "queries.json").write_text(
+        json.dumps({"locale": "en", "queries": [held]}), encoding="utf-8"
+    )
+    (qdir / "locales" / "tr.json").write_text(
+        json.dumps({"locale": "tr", "queries": []}), encoding="utf-8"
+    )
+    chunks = catalog_chunks(catalog_payload())
+    kept = eval_retrieval.without_holdout(chunks, qdir, ("en", "tr"))
+    assert not [c for c in kept if c.kind == "complaint" and c.text == held["query"]]
+
+
+def test_shipped_retrieval_eval_dataset_integrity_and_split() -> None:
+    from vehicle_mcp.knowledge import eval_retrieval
+
+    en_q, en_w = eval_retrieval.load_query_file(eval_retrieval.DEFAULT_QUERIES_DIR, "en")
+    tr_q, tr_w = eval_retrieval.load_query_file(eval_retrieval.DEFAULT_QUERIES_DIR, "tr")
+    assert len(en_q) == len(tr_q) >= 164
+    assert len(en_w) == len(tr_w) >= 12
+    assert len({q.id for q in en_q}) == len(en_q)
+    assert len({q.id for q in tr_q}) == len(tr_q)
+    assert len({q.query.strip().lower() for q in en_q}) == len(en_q)
+    assert len({q.query.strip().lower() for q in tr_q}) == len(tr_q)
+    assert all(q.query.isascii() for q in en_q)
+    assert [q.expected for q in en_q] == [q.expected for q in tr_q]
+    assert [q.split for q in en_q] == [q.split for q in tr_q]
+    assert [q.split for q in en_w] == [q.split for q in tr_w]
+    assert {q.split for q in en_q} == {"tune", "test", "holdout"}
+    assert {q.split for q in en_w} == {"tune", "test"}
+    # `test` holds only new G4-7 items: nothing the shipped parameters were chosen on
+    assert all("-g4-" in q.id for q in en_q + tr_q if q.split == "test")
+    assert all("-g4-" in q.id for q in en_w + tr_w if q.split == "test")
+    assert sum(1 for q in en_q if q.split == "test") >= 30
+    assert sum(1 for q in en_q if q.split == "holdout") == 62
+    assert all(q.expected for q in en_q)
