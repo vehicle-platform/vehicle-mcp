@@ -174,14 +174,9 @@ def _round(value: Any) -> Any:
     return float(f"{value:.3g}")
 
 
-def _slug(signal: str) -> str:
-    """A snake_case name from a server-reported signal name (`did.ENGINE_SPEED` -> engine_speed)."""
-    return matching.slug_name(signal)
-
-
-def _human(signal: str) -> str:
-    """A plain label from a server-reported signal name (`did.ENGINE_SPEED` -> engine speed)."""
-    return matching.human_label(signal)
+# Names and labels from server-reported signal names; shared with the knowledge index.
+_slug = matching.slug_name
+_human = matching.human_label
 
 
 def quantity(name: str, label: str, unit: str | None, value: Any) -> dict[str, Any]:

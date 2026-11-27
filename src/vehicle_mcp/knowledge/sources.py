@@ -6,7 +6,8 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
-from ..matching import human_label
+from vehicle_mcp.matching import human_label
+
 from . import KnowledgeUnavailable
 from .chunking import chunk_markdown, chunk_plain, first_heading
 from .store import Chunk
