@@ -6,6 +6,8 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
+from vehicle_mcp.matching import human_label
+
 from . import KnowledgeUnavailable
 from .chunking import chunk_markdown, chunk_plain, first_heading
 from .store import Chunk
@@ -23,18 +25,27 @@ def _str_list(value: Any) -> list[str]:
     return [v.strip() for v in value if isinstance(v, str) and v.strip()]
 
 
-def _symptom_line(symptom: Any) -> str | None:
+def _symptom_line(symptom: Any, *, human: bool = False) -> str | None:
     if not isinstance(symptom, dict):
         return None
-    parts = [str(symptom.get(k)) for k in ("signal", "direction", "condition") if symptom.get(k)]
+    parts: list[str] = []
+    for key in ("signal", "direction", "condition"):
+        val = symptom.get(key)
+        if not val:
+            continue
+        text = str(val)
+        parts.append(human_label(text) if human and key == "signal" else text)
     return " ".join(parts) or None
 
 
-def _fault_text(entry: dict[str, Any], complaints: list[str]) -> str:
-    lines = [f"Fault {entry['id']} ({entry.get('subsystem', 'unknown')})."]
+def _fault_text(entry: dict[str, Any], complaints: list[str], *, human: bool = False) -> str:
+    raw_subsystem = str(entry.get("subsystem", "unknown"))
+    subsystem = human_label(raw_subsystem) if human else raw_subsystem
+    lines = [f"Fault {entry['id']} ({subsystem})."]
     if entry.get("root_cause"):
         lines.append(f"Root cause: {entry['root_cause']}.")
-    symptoms = [s for s in map(_symptom_line, entry.get("symptoms") or []) if s]
+    raw_symptoms = entry.get("symptoms") or []
+    symptoms = [s for x in raw_symptoms if (s := _symptom_line(x, human=human))]
     if symptoms:
         lines.append("Symptoms: " + "; ".join(symptoms) + ".")
     for label, key in (("Rider text", "rider_text"), ("Action", "action")):
@@ -74,7 +85,9 @@ def catalog_chunks(payload: Any, *, all_displayable: bool = False) -> list[Chunk
 
 def _displayable(entry: dict[str, Any], phrases: list[tuple[str, str]]) -> list[Chunk]:
     fid = str(entry["id"])
-    title = f"{fid} {entry.get('subsystem', '')}".strip()
+    raw_subsystem = entry.get("subsystem", "")
+    subsystem_label = human_label(str(raw_subsystem)) if raw_subsystem else ""
+    title = f"{fid} {subsystem_label}".strip()
     path = f"faults/{fid}"
     common = {
         "source": CATALOG_SOURCE,
@@ -87,6 +100,7 @@ def _displayable(entry: dict[str, Any], phrases: list[tuple[str, str]]) -> list[
     out = [
         Chunk(
             text=_fault_text(entry, english),
+            display=_fault_text(entry, english, human=True),
             locale="en",
             section="fault entry",
             kind="fault",
@@ -110,7 +124,8 @@ def _unconfirmed(entry: dict[str, Any], phrases: list[tuple[str, str]]) -> list[
     needs = _str_list(entry.get("needs"))
     if not needs or not phrases:
         return []
-    shown = "Measurable signals: " + ", ".join(needs) + ". No fault is named or confirmed."
+    labels = [human_label(n) for n in needs]
+    shown = "Measurable signals: " + ", ".join(labels) + ". No fault is named or confirmed."
     return [
         Chunk(
             source=CATALOG_SOURCE,

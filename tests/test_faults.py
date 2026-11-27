@@ -28,7 +28,7 @@ def test_list_is_compact_and_never_asks_for_unconfirmed(
     assert entry["id"] == "F-TEST-01"
     assert entry["severity"] == 8
     assert entry["advise_stop"] is True
-    assert "did.COOLANT_TEMP up (at idle)" in entry["symptoms"]
+    assert "coolant temp up (at idle)" in entry["symptoms"]
     assert "rider_text" not in entry
     assert "stop safely" in result["note"]
     assert result["kind"] == "catalog_reference"

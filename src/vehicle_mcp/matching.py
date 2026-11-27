@@ -48,6 +48,17 @@ TOPICS: dict[str, tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...]]] = {
 TOPIC_KEYS = tuple(TOPICS)
 
 
+def slug_name(signal: str) -> str:
+    """A snake_case name from a server-reported signal name (`did.ENGINE_SPEED` -> engine_speed)."""
+    base = signal.rsplit(".", 1)[-1].lower()
+    return re.sub(r"[^a-z0-9]+", "_", base).strip("_") or "signal"
+
+
+def human_label(signal: str) -> str:
+    """A plain label from a server-reported identifier (`did.ENGINE_SPEED` -> engine speed)."""
+    return slug_name(signal).replace("_", " ")
+
+
 def canonical_topic(topic: str) -> str | None:
     """Map a topic word or phrase to a canonical topic key, or None."""
     text = normalise(topic)
