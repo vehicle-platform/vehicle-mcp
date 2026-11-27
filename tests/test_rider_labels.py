@@ -206,3 +206,88 @@ def test_no_internal_identifiers_in_rider_facing_tool_output(tmp_path: Path) -> 
     assert not violations, "Internal identifiers leaked in rider-facing fields:\n" + "\n".join(
         violations
     )
+
+
+def test_g8_4_label_echo_regressions_en_and_tr(tmp_path: Path) -> None:
+    """G8-4: concrete inputs that previously echoed internal identifiers, verified in en and tr."""
+    server = FakeVehicleServer(sessions=HOT_SESSIONS)
+    # Fault with snake_case symptom condition + missing subsystem (must not emit bare fault id).
+    server.fault_entries.append(
+        {
+            "id": "ENG-099",
+            "subsystem": "",
+            "displayable": True,
+            "root_cause": "Abnormal valve clearance near did.ENGINE_SPEED threshold",
+            "rider_text": "Listen for tapping when engine_running at idle.",
+            "action": "Check clearance before riding.",
+            "advise_stop": False,
+            "detectable_now": True,
+            "needs": ["did.ENGINE_SPEED"],
+            "complaints": ["tapping when hot"],
+            "complaints_i18n": {"tr": ["sıcakken tıkırtı sesi"]},
+            "symptoms": [
+                {
+                    "signal": "did.COOLANT_TEMP",
+                    "direction": "up",
+                    "condition": "engine_running and did.ENGINE_SPEED > 1000",
+                }
+            ],
+        }
+    )
+    client = VehicleServerClient(
+        Settings(server_url="http://vehicle.test", api_token=TOKEN),
+        transport=httpx.MockTransport(server.handler),
+    )
+
+    # Knowledge index with: (a) fault missing subsystem + snake_case condition, (b) headingless
+    # snake_case Markdown filename, (c) section heading containing did.COOLANT_TEMP.
+    docs_dir = tmp_path / "echo_docs"
+    docs_dir.mkdir()
+    (docs_dir / "ride_summary_notes.md").write_text(
+        "Plain text about coolant warmup behaviour.\n\n"
+        "## did.COOLANT_TEMP\n\n"
+        "Coolant temperature rises steadily after start.\n",
+        encoding="utf-8",
+    )
+    payload = {"entries": server.fault_entries}
+    fake = FakeEmbedder()
+    chunks = [*catalog_chunks(payload), *docs_chunks(docs_dir)]
+    db = tmp_path / "echo.sqlite"
+    idx = create_index(db, dim=fake.dim, model_id=fake.model_id)
+    idx.add_chunks(chunks, fake.embed_passages([c.text for c in chunks]))
+    idx.close()
+    knowledge = KnowledgeSearch(db, embedder_factory=lambda: fake)
+    tools = VehicleTools(client, knowledge=knowledge)
+
+    # 1. Unknown did./sensor./snake_case queries to explain_context and get_data_card.
+    cases: list[tuple[str, Any]] = [
+        ("explain_unknown_did", tools.explain_context("did.OIL_PRESSURE", "hot")),
+        ("explain_unknown_sensor", tools.explain_context("sensor.oil_pressure", "hot")),
+        ("card_unknown_did", tools.get_data_card("did.OIL_PRESSURE", "hot")),
+        ("card_unknown_snake", tools.get_data_card("oil_pressure_sensor", "hot")),
+        ("fault_catalog_condition", tools.list_fault_catalog()),
+        ("search_en_fault", tools.search_knowledge("tapping when hot", locale="en")),
+        ("search_tr_fault", tools.search_knowledge("sıcakken tıkırtı sesi", locale="tr")),
+        ("search_en_doc", tools.search_knowledge("coolant warmup behaviour", locale="en")),
+        ("search_tr_doc", tools.search_knowledge("coolant warmup behaviour", locale="tr")),
+        ("symptom_en", tools.check_symptom("tapping when hot", "hot", locale="en")),
+        ("symptom_tr", tools.check_symptom("sıcakken tıkırtı sesi", "hot", locale="tr")),
+    ]
+
+    bare_fault_id_re = re.compile(r"^[A-Z]{2,5}-\d{3}$")
+    violations: list[str] = []
+    for name, res in cases:
+        for field_path, text in _collect_rider_texts(res):
+            matches = INTERNAL_ID_RE.findall(text)
+            if matches:
+                violations.append(f"{name}.{field_path}: {matches} in {text!r}")
+            if field_path.endswith(".title") and bare_fault_id_re.match(text.strip()):
+                violations.append(f"{name}.{field_path}: bare fault id {text!r}")
+    assert not violations, "Label echo regression(s):\n" + "\n".join(violations)
+
+    # Verify headingless snake_case file became humanised title, and missing subsystem had label.
+    doc_hits = tools.search_knowledge("coolant warmup behaviour", locale="en")["hits"]
+    assert any(h["citation"]["title"] == "ride summary notes" for h in doc_hits)
+    assert all("did.COOLANT_TEMP" not in h["citation"]["section"] for h in doc_hits)
+    fault_hits = tools.search_knowledge("tapping when hot", locale="en")["hits"]
+    assert any(h["citation"]["title"].startswith("ENG-099 ") for h in fault_hits)

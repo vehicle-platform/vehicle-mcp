@@ -251,13 +251,18 @@ _NO_REFERENCES = (
 
 def _symptom_summary(symptom: Any) -> str:
     if not isinstance(symptom, dict):
-        return str(symptom)
+        return matching.humanise_identifiers(str(symptom))
     raw_signal = symptom.get("signal")
     signal_label = _human(raw_signal) if isinstance(raw_signal, str) else str(raw_signal)
     text = f"{signal_label} {symptom.get('direction')}"
     if symptom.get("condition"):
-        text += f" ({symptom['condition']})"
+        cond = matching.humanise_identifiers(str(symptom["condition"]))
+        text += f" ({cond})"
     return text
+
+
+def _human_opt(value: Any) -> Any:
+    return matching.humanise_identifiers(value) if isinstance(value, str) else value
 
 
 def _compact_fault(entry: dict[str, Any]) -> dict[str, Any]:
@@ -266,7 +271,7 @@ def _compact_fault(entry: dict[str, Any]) -> dict[str, Any]:
     return {
         "id": entry.get("id"),
         "subsystem": entry.get("subsystem"),
-        "root_cause": entry.get("root_cause"),
+        "root_cause": _human_opt(entry.get("root_cause")),
         "severity": rating.get("severity") if isinstance(rating, dict) else None,
         "advise_stop": entry.get("advise_stop"),
         "detectable_now": entry.get("detectable_now"),
@@ -972,9 +977,12 @@ class VehicleTools:
         """
         key = matching.canonical_topic(topic)
         if key is None:
+            shown_topic = matching.humanise_identifiers(topic)
             return {
                 "available": False,
-                "reason": f"unknown topic {topic!r}; use one of: {', '.join(matching.TOPIC_KEYS)}",
+                "reason": (
+                    f"unknown topic {shown_topic!r}; use one of: {', '.join(matching.TOPIC_KEYS)}"
+                ),
                 "topics": list(matching.TOPIC_KEYS),
             }
         session, created = self._resolve_session(session_id)
@@ -1001,7 +1009,7 @@ class VehicleTools:
                     and matching.name_matches(key, name)
                 ):
                     ride_values.append(
-                        quantity(name, name.replace("_", " "), item.get("unit"), item["value"])
+                        quantity(name, _human(name), item.get("unit"), item["value"])
                     )
 
         result: dict[str, Any] = {
@@ -1220,8 +1228,8 @@ class VehicleTools:
         item: dict[str, Any] = {
             **compact,
             "needs": [n for n in entry.get("needs") or [] if isinstance(n, str)],
-            "rider_text": entry.get("rider_text"),
-            "action": entry.get("action"),
+            "rider_text": _human_opt(entry.get("rider_text")),
+            "action": _human_opt(entry.get("action")),
         }
         if score is not None:
             item["matched_phrase"] = phrase
@@ -1343,7 +1351,7 @@ class VehicleTools:
                 and _number(item.get("value")) is not None
             }
         out = [
-            quantity(n, n.replace("_", " "), reported[n].get("unit"), reported[n]["value"])
+            quantity(n, _human(n), reported[n].get("unit"), reported[n]["value"])
             for n in scalars
             if n in reported
         ]
@@ -1536,11 +1544,12 @@ class VehicleTools:
         _, series, _ = self._series_index(session)
         entry = self._explain_signal(query, series)
         if entry is None:
+            shown_query = matching.humanise_identifiers(query)
             return {
                 **base,
                 "available": False,
                 "session_id": session,
-                "reason": f"no signal in this ride matches {query!r}; topics: "
+                "reason": f"no signal in this ride matches {shown_query!r}; topics: "
                 + ", ".join(matching.TOPIC_KEYS),
                 "available_signals": [_human(e["name"]) for e in series[:MAX_CARD_NAMES]],
             }
