@@ -365,6 +365,34 @@ MECH_ENTRY: dict[str, Any] = {
 
 FAULT_ENTRIES: list[dict[str, Any]] = [FAULT_ENTRY, MECH_ENTRY]
 
+MARKS_BY_SESSION: dict[str, dict[str, Any]] = {
+    "s1": {
+        "ride_id": "s1",
+        "start_utc_ms": 1_700_000_000_000,
+        "end_utc_ms": 1_700_000_600_000,
+        "marks": [
+            {
+                "id": "m-1",
+                "t_utc": 1_700_000_065_500,
+                "kind": "misfire",
+                "note": "stumbled under throttle",
+            },
+            {
+                "id": "m-2",
+                "t_utc": 1_700_000_180_000,
+                "kind": "rough_road",
+                "note": None,
+            },
+        ],
+    },
+    "s2": {
+        "ride_id": "s2",
+        "start_utc_ms": 1_700_100_000_000,
+        "end_utc_ms": 1_700_100_300_000,
+        "marks": [],
+    },
+}
+
 
 class FakeVehicleServer:
     """A routed httpx.MockTransport handler with recorded requests."""
@@ -376,6 +404,7 @@ class FakeVehicleServer:
         supports_stats: bool = True,
         supports_rides: bool = True,
         supports_faults: bool = True,
+        supports_marks: bool = True,
         refuse_unconfirmed: int | None = None,
         rides_error: tuple[int, str] | None = None,
     ) -> None:
@@ -385,9 +414,11 @@ class FakeVehicleServer:
         self.supports_rides = supports_rides
         self.rides_error = rides_error
         self.supports_faults = supports_faults
+        self.supports_marks = supports_marks
         self.refuse_unconfirmed = refuse_unconfirmed
         self.fault_entries = copy.deepcopy(FAULT_ENTRIES)
         self.summaries = copy.deepcopy(SUMMARY_BY_SESSION)
+        self.marks_by_session = copy.deepcopy(MARKS_BY_SESSION)
         self.rides_payload = copy.deepcopy(RIDES_PAYLOAD)
 
     def handler(self, request: httpx.Request) -> httpx.Response:
@@ -399,6 +430,8 @@ class FakeVehicleServer:
             return httpx.Response(200, json=self.sessions)
         if parts == ["rides"]:
             return self._rides()
+        if len(parts) == 3 and parts[0] == "rides" and parts[2] == "marks":
+            return self._ride_marks(parts[1])
         if parts and parts[0] == "faults":
             return self._faults(request, parts)
 
@@ -459,6 +492,17 @@ class FakeVehicleServer:
             status, detail = self.rides_error
             return httpx.Response(status, json={"detail": detail})
         return httpx.Response(200, json=self.rides_payload)
+
+    def _ride_marks(self, ride_id: str) -> httpx.Response:
+        if not self.supports_marks:
+            return httpx.Response(404, json={"detail": "Not Found"})
+        if ride_id in FAILURES:
+            status = FAILURES[ride_id]
+            return httpx.Response(status, json={"detail": f"{DETAILS[status]}: {ride_id}"})
+        payload = self.marks_by_session.get(ride_id)
+        if payload is None:
+            return httpx.Response(404, json={"detail": f"unknown session: {ride_id}"})
+        return httpx.Response(200, json=payload)
 
     def _report(self, request: httpx.Request, session_id: str) -> httpx.Response:
         if request.url.params.get("format") == "text":

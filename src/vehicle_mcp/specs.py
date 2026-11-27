@@ -35,6 +35,9 @@ DESCRIPTIONS: dict[str, str] = {
     "get_ride_summary": (
         "One ride's stored totals: ride time, distance, fuel. For how long or how far."
     ),
+    "get_ride_marks": (
+        "Rider-recorded event marks for one ride (time offset, kind, note). Weak labels only."
+    ),
     "list_fault_catalog": "List possible faults from the catalog. NOT detected faults.",
     "get_fault": "Read one catalog fault in full: cause and advice. Not a diagnosis.",
     "get_data_card": (
@@ -76,6 +79,9 @@ ARGUMENTS: dict[str, dict[str, str]] = {
     "explain_context": {
         "topic_or_signal": "Topic word or signal name, e.g. coolant.",
         "session_id": "Omit for the latest ride.",
+    },
+    "get_ride_marks": {
+        "session_id": "Ride id from list_sessions.",
     },
 }
 

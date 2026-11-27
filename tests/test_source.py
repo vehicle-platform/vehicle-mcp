@@ -80,6 +80,9 @@ class InMemorySource:
     def ride_summary(self, session_id: str) -> Any:
         return {"session_id": session_id, "signals": []}
 
+    def ride_marks(self, session_id: str) -> Any:
+        return {"ride_id": session_id, "start_utc_ms": 0, "end_utc_ms": 1000, "marks": []}
+
     def rides(
         self,
         *,

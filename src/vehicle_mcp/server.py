@@ -44,6 +44,7 @@ def build_server(source: HistorySource, knowledge: KnowledgeSearch | None = None
         tools.compare_sessions,
         tools.query_ride_history,
         tools.get_ride_summary,
+        tools.get_ride_marks,
         tools.list_fault_catalog,
         tools.get_fault,
         tools.get_data_card,
