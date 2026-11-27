@@ -59,6 +59,16 @@ def human_label(signal: str) -> str:
     return slug_name(signal).replace("_", " ")
 
 
+_INTERNAL_IDENT_RE = re.compile(
+    r"\b(?:did|sensor|derived|window|const)\.[A-Za-z0-9_]+\b|\b[A-Za-z]+(?:_[A-Za-z0-9]+)+\b"
+)
+
+
+def humanise_identifiers(text: str) -> str:
+    """Replace embedded `did.X`/`sensor.x`/`derived.x`/`snake_case` tokens using `human_label`."""
+    return _INTERNAL_IDENT_RE.sub(lambda m: human_label(m.group(0)), text)
+
+
 def canonical_topic(topic: str) -> str | None:
     """Map a topic word or phrase to a canonical topic key, or None."""
     text = normalise(topic)

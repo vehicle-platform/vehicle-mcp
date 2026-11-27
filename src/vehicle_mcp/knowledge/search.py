@@ -7,6 +7,8 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
+from vehicle_mcp.matching import humanise_identifiers
+
 from . import KnowledgeUnavailable
 from .embedder import Embedder, OnnxE5Embedder
 from .settings import default_db_path, default_model_dir
@@ -121,7 +123,10 @@ class KnowledgeSearch:
     @staticmethod
     def _shape(rank: int, hit: Hit, query: str) -> dict[str, Any]:
         chunk = hit.chunk
-        text = snippet(chunk.display if chunk.display is not None else chunk.text, query)
+        raw_text = chunk.display if chunk.display is not None else chunk.text
+        if chunk.kind == "fault" and chunk.display is None:
+            raw_text = humanise_identifiers(raw_text)
+        text = snippet(raw_text, query)
         item: dict[str, Any] = {
             "rank": rank,
             "score": round(hit.score, 5),
@@ -130,8 +135,8 @@ class KnowledgeSearch:
             "license": chunk.license,
             "citation": {
                 "source": chunk.source,
-                "title": chunk.title,
-                "section": chunk.section,
+                "title": humanise_identifiers(chunk.title),
+                "section": humanise_identifiers(chunk.section),
                 "url_or_path": chunk.url_or_path,
             },
         }

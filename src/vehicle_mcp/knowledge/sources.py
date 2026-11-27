@@ -6,7 +6,7 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
-from vehicle_mcp.matching import human_label
+from vehicle_mcp.matching import human_label, humanise_identifiers
 
 from . import KnowledgeUnavailable
 from .chunking import chunk_markdown, chunk_plain, first_heading
@@ -34,23 +34,30 @@ def _symptom_line(symptom: Any, *, human: bool = False) -> str | None:
         if not val:
             continue
         text = str(val)
-        parts.append(human_label(text) if human and key == "signal" else text)
+        if human:
+            text = human_label(text) if key == "signal" else humanise_identifiers(text)
+        parts.append(text)
     return " ".join(parts) or None
 
 
 def _fault_text(entry: dict[str, Any], complaints: list[str], *, human: bool = False) -> str:
-    raw_subsystem = str(entry.get("subsystem", "unknown"))
-    subsystem = human_label(raw_subsystem) if human else raw_subsystem
+    raw_subsystem = str(entry.get("subsystem") or "").strip()
+    if human:
+        subsystem = human_label(raw_subsystem) if raw_subsystem else "general"
+    else:
+        subsystem = raw_subsystem or "unknown"
     lines = [f"Fault {entry['id']} ({subsystem})."]
     if entry.get("root_cause"):
-        lines.append(f"Root cause: {entry['root_cause']}.")
+        cause = str(entry["root_cause"])
+        lines.append(f"Root cause: {humanise_identifiers(cause) if human else cause}.")
     raw_symptoms = entry.get("symptoms") or []
     symptoms = [s for x in raw_symptoms if (s := _symptom_line(x, human=human))]
     if symptoms:
         lines.append("Symptoms: " + "; ".join(symptoms) + ".")
     for label, key in (("Rider text", "rider_text"), ("Action", "action")):
         if entry.get(key):
-            lines.append(f"{label}: {entry[key]}")
+            val = str(entry[key])
+            lines.append(f"{label}: {humanise_identifiers(val) if human else val}")
     if complaints:
         lines.append("Complaints: " + "; ".join(complaints) + ".")
     return "\n".join(lines)
@@ -85,9 +92,14 @@ def catalog_chunks(payload: Any, *, all_displayable: bool = False) -> list[Chunk
 
 def _displayable(entry: dict[str, Any], phrases: list[tuple[str, str]]) -> list[Chunk]:
     fid = str(entry["id"])
-    raw_subsystem = entry.get("subsystem", "")
-    subsystem_label = human_label(str(raw_subsystem)) if raw_subsystem else ""
-    title = f"{fid} {subsystem_label}".strip()
+    raw_subsystem = str(entry.get("subsystem") or "").strip()
+    subsystem_label = human_label(raw_subsystem) if raw_subsystem else ""
+    fallback_label = (
+        humanise_identifiers(str(entry["root_cause"]).strip())
+        if isinstance(entry.get("root_cause"), str) and entry["root_cause"].strip()
+        else "catalog entry"
+    )
+    title = f"{fid} {subsystem_label or fallback_label}".strip()
     path = f"faults/{fid}"
     common = {
         "source": CATALOG_SOURCE,
@@ -153,7 +165,7 @@ def docs_chunks(directory: Path, *, locale: str = "en") -> Iterator[Chunk]:
         if any(part in SKIP_DIRS for part in rel.parts[:-1]):
             continue
         text = path.read_text(encoding="utf-8", errors="replace")
-        title = first_heading(text) or path.stem
+        title = first_heading(text) or human_label(path.stem)
         shown_path = f"{root.name}/{rel.as_posix()}"
         for piece in chunk_markdown(text):
             yield Chunk(
