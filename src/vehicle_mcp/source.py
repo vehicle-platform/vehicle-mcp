@@ -36,6 +36,10 @@ class UnconfirmedRefused(SourceError):
     """The server refused `include_unconfirmed` for this token (displayable-only still works)."""
 
 
+class RideMarksNotAvailable(SourceError):
+    """The ride or the /rides/{id}/marks route is not available (404)."""
+
+
 class HistorySource(Protocol):
     """Read-only access to recorded sessions."""
 
@@ -92,3 +96,7 @@ class HistorySource(Protocol):
     def fault(self, fault_id: str) -> Any:
         """The GET /faults/{id} shape (displayable entries only): `defs_version`,
         `vehicle` and `entry`."""
+
+    def ride_marks(self, session_id: str) -> Any:
+        """The GET /rides/{id}/marks shape: `ride_id`, `start_utc_ms`, `end_utc_ms`
+        and `marks` entries with `id`, `t_utc`, `kind` and optional `note`."""

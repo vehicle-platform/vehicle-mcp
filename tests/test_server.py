@@ -37,6 +37,7 @@ def test_registers_exactly_the_read_only_tools() -> None:
         "compare_sessions",
         "query_ride_history",
         "get_ride_summary",
+        "get_ride_marks",
         "list_fault_catalog",
         "get_fault",
         "get_data_card",
@@ -86,6 +87,7 @@ def test_happy_path_through_mcp() -> None:
             )
         )
         ride_summary = asyncio.run(server.call_tool("get_ride_summary", {"session_id": "s1"}))
+        ride_marks = asyncio.run(server.call_tool("get_ride_marks", {"session_id": "s1"}))
     finally:
         client.close()
 
@@ -99,3 +101,5 @@ def test_happy_path_through_mcp() -> None:
     assert '"undated"' in "\n".join(block.text for block in history.content)
     assert ride_summary.is_error is False
     assert '"ride_distance"' in "\n".join(block.text for block in ride_summary.content)
+    assert ride_marks.is_error is False
+    assert '"misfire"' in "\n".join(block.text for block in ride_marks.content)

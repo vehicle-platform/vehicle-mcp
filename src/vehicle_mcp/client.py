@@ -16,6 +16,7 @@ from .config import Settings
 from .source import (
     FaultNotAvailable,
     NoRideSummary,
+    RideMarksNotAvailable,
     RidesRouteUnavailable,
     SourceError,
     StatsRouteUnavailable,
@@ -291,4 +292,19 @@ class VehicleServerClient:
                         "vehicle-server does not expose the fault catalog route (older server)"
                     ) from None
                 raise FaultNotAvailable(f"fault {fault_id!r} is not available: {detail}") from None
+            raise
+
+    def ride_marks(self, session_id: str) -> Any:
+        try:
+            return self.get_json(f"/rides/{quote(session_id, safe='')}/marks")
+        except VehicleServerError as exc:
+            if exc.status_code == 404:
+                detail = (exc.detail or "").strip().replace(self._settings.api_token, "***")
+                if detail.lower() in {"", "not found", "not found."}:
+                    raise RideMarksNotAvailable(
+                        "vehicle-server does not expose the ride marks route (older server)"
+                    ) from None
+                raise RideMarksNotAvailable(
+                    f"ride {session_id!r} is not available: {detail}"
+                ) from None
             raise
