@@ -111,7 +111,8 @@ def test_unconfirmed_entries_index_only_phrases_and_needs() -> None:
     blob = json.dumps([c.__dict__ for c in chunks])
     assert "SECRET-WORDING" not in blob
     assert "CHG-009" not in blob
-    assert all(c.display and "did.BATTERY_VOLTAGE" in c.display for c in chunks)
+    assert all(c.display and "battery voltage" in c.display for c in chunks)
+    assert all(c.display and "did.BATTERY_VOLTAGE" not in c.display for c in chunks)
     assert all(c.title == "unconfirmed catalog entry (data only)" for c in chunks)
 
 
@@ -273,7 +274,8 @@ def test_unconfirmed_hits_never_carry_id_or_wording(tmp_path: Path) -> None:
     blob = json.dumps(result, ensure_ascii=False)
     assert "CHG-009" not in blob and "SECRET-WORDING" not in blob
     assert "fault_id" not in data_only[0]
-    assert "did.BATTERY_VOLTAGE" in data_only[0]["snippet"]
+    assert "battery voltage" in data_only[0]["snippet"]
+    assert "did.BATTERY_VOLTAGE" not in data_only[0]["snippet"]
 
 
 def test_snippets_are_at_most_300_characters(tmp_path: Path) -> None:

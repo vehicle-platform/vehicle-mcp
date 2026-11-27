@@ -176,13 +176,12 @@ def _round(value: Any) -> Any:
 
 def _slug(signal: str) -> str:
     """A snake_case name from a server-reported signal name (`did.ENGINE_SPEED` -> engine_speed)."""
-    base = signal.rsplit(".", 1)[-1].lower()
-    return re.sub(r"[^a-z0-9]+", "_", base).strip("_") or "signal"
+    return matching.slug_name(signal)
 
 
 def _human(signal: str) -> str:
     """A plain label from a server-reported signal name (`did.ENGINE_SPEED` -> engine speed)."""
-    return _slug(signal).replace("_", " ")
+    return matching.human_label(signal)
 
 
 def quantity(name: str, label: str, unit: str | None, value: Any) -> dict[str, Any]:
@@ -258,7 +257,9 @@ _NO_REFERENCES = (
 def _symptom_summary(symptom: Any) -> str:
     if not isinstance(symptom, dict):
         return str(symptom)
-    text = f"{symptom.get('signal')} {symptom.get('direction')}"
+    raw_signal = symptom.get("signal")
+    signal_label = _human(raw_signal) if isinstance(raw_signal, str) else str(raw_signal)
+    text = f"{signal_label} {symptom.get('direction')}"
     if symptom.get("condition"):
         text += f" ({symptom['condition']})"
     return text
@@ -1096,7 +1097,7 @@ class VehicleTools:
                 "available": True,
                 "matched": [],
                 "reason": "the fault catalog served here has no complaint phrases "
-                "(vehicle-defs v0.32.0 or newer is needed); try list_fault_catalog",
+                "(vehicle-defs v0.32.0 or newer is needed)",
             }
 
         phrase_index = matching.PhraseIndex(
@@ -1126,7 +1127,7 @@ class VehicleTools:
         if not matched:
             reason = (
                 "no catalog entry matches these words; ask the rider to describe "
-                "the sound, smell, light or behaviour, or try get_data_card"
+                "the sound, smell, light or behaviour, or check the ride's numbers"
             )
             if fallback:
                 reason += ". " + _UNCONFIRMED_REFUSED
