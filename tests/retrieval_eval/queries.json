@@ -2,1472 +2,196 @@
  "locale": "en",
  "seed": 20261127,
  "queries": [
-  {
-   "id": "en-01",
-   "query": "ticking noise from the valves at idle",
-   "expected": [
-    "ENG-001"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "en-02",
-   "query": "engine makes a rapid sewing-machine ticking sound",
-   "expected": [
-    "ENG-001"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "en-03",
-   "query": "brake pads squealing and metal grinding sound",
-   "expected": [
-    "BRK-001"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "en-04",
-   "query": "brake fluid level dropping with soft lever",
-   "expected": [
-    "BRK-002"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "en-05",
-   "query": "ABS warning lamp stays on and ABS not working",
-   "expected": [
-    "BRK-006"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "en-06",
-   "query": "clutch slipping revs climb without accelerating",
-   "expected": [
-    "CLU-001"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "en-07",
-   "query": "bike creeps forward with clutch pulled and hard to find neutral",
-   "expected": [
-    "CLU-002"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "en-08",
-   "query": "clutch lever has too much free play",
-   "expected": [
-    "CLU-003"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "en-09",
-   "query": "stiff clutch lever grinding when changing gears",
-   "expected": [
-    "CLU-005"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "en-10",
-   "query": "loose drive chain clunking when opening throttle",
-   "expected": [
-    "FDR-001"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "en-11",
-   "query": "chain stretched past wear limit red zone",
-   "expected": [
-    "FDR-002"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "en-12",
-   "query": "dry rusty chain squeaking and rattling",
-   "expected": [
-    "FDR-003"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "en-13",
-   "query": "tight spots in drive chain surging at steady speed",
-   "expected": [
-    "FDR-004"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "en-14",
-   "query": "loses power at highway speed and hesitates under load",
-   "expected": [
-    "FUE-002"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "en-15",
-   "query": "engine cranks normally but will not start no crankshaft signal",
-   "expected": [
-    "IGN-001"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "en-16",
-   "query": "engine misfiring under throttle with weak ignition coil",
-   "expected": [
-    "IGN-003"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "en-17",
-   "query": "hard starting rough idle fouled spark plug",
-   "expected": [
-    "IGN-004"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "en-18",
-   "query": "intermittent starting problem loose ignition connector",
-   "expected": [
-    "IGN-005"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "en-19",
-   "query": "headlight completely out no forward beam",
-   "expected": [
-    "LIT-001"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "en-20",
-   "query": "tail light and brake lamp stopped working",
-   "expected": [
-    "LIT-002"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "en-21",
-   "query": "dashboard backlight dark and warning lamp out",
-   "expected": [
-    "LIT-004"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "en-22",
-   "query": "oil warning light flickering low engine oil level",
-   "expected": [
-    "LUB-001"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "en-23",
-   "query": "low oil pressure lamp on with engine knocking",
-   "expected": [
-    "LUB-002"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "en-24",
-   "query": "blue smoke from exhaust overfilled engine oil",
-   "expected": [
-    "LUB-004"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "en-25",
-   "query": "oil leaking down front fork tube seal",
-   "expected": [
-    "SUS-001"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "en-26",
-   "query": "notchy steering head bearing clunk under braking",
-   "expected": [
-    "SUS-002"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "en-27",
-   "query": "rear shock bouncing after bumps oil leak",
-   "expected": [
-    "SUS-003"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "en-28",
-   "query": "clunking noise from suspension over potholes loose axle",
-   "expected": [
-    "SUS-004"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "en-29",
-   "query": "heavy steering bike feels unstable low tyre pressure",
-   "expected": [
-    "TYR-001"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "en-30",
-   "query": "nail in tyre slow puncture losing air",
-   "expected": [
-    "TYR-002"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "en-31",
-   "query": "multiple electrical circuits failing together corroded ground",
-   "expected": [
-    "WIR-001"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "en-32",
-   "query": "headlight cuts out over bumps intermittent connector",
-   "expected": [
-    "WIR-002"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "en-33",
-   "query": "Apple Silicon MLX-LM fine-tuning workflow for Ride LLM",
-   "expected": [
-    "ideas/ride-llm.md#2. Fine-tuning on a budget > Apple Silicon (MLX-LM)"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "en-34",
-   "query": "GGUF conversion and quantisation steps for small models",
-   "expected": [
-    "ideas/ride-llm.md#2. Fine-tuning on a budget > GGUF conversion and quantisation"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "en-35",
-   "query": "copyrighted manuals legal framing in a public repo",
-   "expected": [
-    "ideas/ride-llm.md#4. RAG for technical manuals > Copyrighted manuals in a public repo (legal framing, NOT legal advice) [P]"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "en-36",
-   "query": "multilingual small embedding models comparison for RAG",
-   "expected": [
-    "ideas/ride-llm.md#4. RAG for technical manuals > Embedding models (multilingual, small)"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "en-37",
-   "query": "serving small language models on Raspberry Pi 5 8 GB",
-   "expected": [
-    "ideas/ride-llm.md#7. Edge serving (Pi 5 8 GB)"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "en-38",
-   "query": "conversation memory tiers and token budgets for 4k context",
-   "expected": [
-    "ideas/assistant-memory-and-alerts.md#E. Recommendation (layered design) > E2. Memory tiers and token budgets",
-    "ideas/assistant-memory-and-alerts.md#A. Conversation memory > A4. What fits a 4k-context 1.5B model on a Pi"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "en-39",
-   "query": "real-time in-ride alert transport without paid push provider",
-   "expected": [
-    "ideas/assistant-memory-and-alerts.md#D. Real-time in-ride alerts > D3. Transport without a paid push provider"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "en-40",
-   "query": "Honda CL250 battery specification and charging system baseline",
-   "expected": [
-    "ideas/cl250-technical-baseline.md#2. Electrical, Charging & Starting System Baseline > 2.1 Battery Specification"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "en-41",
-   "query": "stage 0 subsystem physics models for anomaly detection",
-   "expected": [
-    "ideas/physics-informed-anomaly.md#1. Stage 0: subsystem physics models (D-083 level 1)"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "en-42",
-   "query": "node health heartbeat VSS branch proposal Option A",
-   "expected": [
-    "ideas/node-health-vss.md#Option A (recommended): per-node signal names + one VSS branch"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "ho-en-BRK-001-1",
-   "query": "squealing brakes",
-   "expected": [
-    "BRK-001"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "ho-en-BRK-001-2",
-   "query": "metal grinding when braking",
-   "expected": [
-    "BRK-001"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "ho-en-BRK-002-1",
-   "query": "brake lever feels soft",
-   "expected": [
-    "BRK-002"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "ho-en-BRK-002-2",
-   "query": "brake fluid leak",
-   "expected": [
-    "BRK-002"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "ho-en-BRK-006-1",
-   "query": "ABS light on",
-   "expected": [
-    "BRK-006"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "ho-en-BRK-006-2",
-   "query": "ABS not working",
-   "expected": [
-    "BRK-006"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "ho-en-CLU-001-1",
-   "query": "clutch slipping",
-   "expected": [
-    "CLU-001"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "ho-en-CLU-001-2",
-   "query": "burning smell from the clutch",
-   "expected": [
-    "CLU-001"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "ho-en-CLU-002-1",
-   "query": "bike creeps with the clutch pulled",
-   "expected": [
-    "CLU-002"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "ho-en-CLU-002-2",
-   "query": "lurches when engaging a gear",
-   "expected": [
-    "CLU-002"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "ho-en-CLU-003-1",
-   "query": "clutch lever has too much play",
-   "expected": [
-    "CLU-003"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "ho-en-CLU-003-2",
-   "query": "clutch lever has no free play",
-   "expected": [
-    "CLU-003"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "ho-en-CLU-005-1",
-   "query": "clutch lever feels tight",
-   "expected": [
-    "CLU-005"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "ho-en-CLU-005-2",
-   "query": "clutch bites too late",
-   "expected": [
-    "CLU-005"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "ho-en-ENG-001-1",
-   "query": "ticking noise from the top of the engine",
-   "expected": [
-    "ENG-001"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "ho-en-ENG-001-2",
-   "query": "engine sounds like a sewing machine",
-   "expected": [
-    "ENG-001"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "ho-en-FDR-001-1",
-   "query": "chain is loose",
-   "expected": [
-    "FDR-001"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "ho-en-FDR-001-2",
-   "query": "chain slapping noise",
-   "expected": [
-    "FDR-001"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "ho-en-FDR-002-1",
-   "query": "chain is worn out",
-   "expected": [
-    "FDR-002"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "ho-en-FDR-002-2",
-   "query": "chain looks stretched",
-   "expected": [
-    "FDR-002"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "ho-en-FDR-003-1",
-   "query": "chain is noisy",
-   "expected": [
-    "FDR-003"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "ho-en-FDR-003-2",
-   "query": "chain rattle",
-   "expected": [
-    "FDR-003"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "ho-en-FDR-004-1",
-   "query": "chain stiff in places",
-   "expected": [
-    "FDR-004"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "ho-en-FDR-004-2",
-   "query": "jerking at constant speed",
-   "expected": [
-    "FDR-004"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "ho-en-FUE-002-1",
-   "query": "loses power at high speed",
-   "expected": [
-    "FUE-002"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "ho-en-FUE-002-2",
-   "query": "stalls and restarts after a wait",
-   "expected": [
-    "FUE-002"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "ho-en-IGN-001-1",
-   "query": "engine suddenly will not start",
-   "expected": [
-    "IGN-001"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "ho-en-IGN-001-2",
-   "query": "cranks but does not start",
-   "expected": [
-    "IGN-001"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "ho-en-IGN-003-1",
-   "query": "engine misfires",
-   "expected": [
-    "IGN-003"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "ho-en-IGN-003-2",
-   "query": "loss of power with rough running",
-   "expected": [
-    "IGN-003"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "ho-en-IGN-004-1",
-   "query": "hard to start",
-   "expected": [
-    "IGN-004"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "ho-en-IGN-004-2",
-   "query": "engine runs rough",
-   "expected": [
-    "IGN-004"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "ho-en-IGN-005-1",
-   "query": "starts only sometimes",
-   "expected": [
-    "IGN-005"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "ho-en-IGN-005-2",
-   "query": "electrics drop out when cranking",
-   "expected": [
-    "IGN-005"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "ho-en-LIT-001-1",
-   "query": "headlight not working",
-   "expected": [
-    "LIT-001"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "ho-en-LIT-001-2",
-   "query": "headlight went out",
-   "expected": [
-    "LIT-001"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "ho-en-LIT-002-1",
-   "query": "brake light not working",
-   "expected": [
-    "LIT-002"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "ho-en-LIT-002-2",
-   "query": "tail light out",
-   "expected": [
-    "LIT-002"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "ho-en-LIT-004-1",
-   "query": "dash backlight out",
-   "expected": [
-    "LIT-004"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "ho-en-LIT-004-2",
-   "query": "dash is dark",
-   "expected": [
-    "LIT-004"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "ho-en-LUB-001-1",
-   "query": "oil light on",
-   "expected": [
-    "LUB-001"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "ho-en-LUB-001-2",
-   "query": "oil warning light flickers",
-   "expected": [
-    "LUB-001"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "ho-en-LUB-002-1",
-   "query": "oil pressure light on",
-   "expected": [
-    "LUB-002"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "ho-en-LUB-002-2",
-   "query": "engine noise together with the oil light",
-   "expected": [
-    "LUB-002"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "ho-en-LUB-004-1",
-   "query": "oil level above the mark",
-   "expected": [
-    "LUB-004"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "ho-en-LUB-004-2",
-   "query": "oil overfilled",
-   "expected": [
-    "LUB-004"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "ho-en-SUS-001-1",
-   "query": "oil on the fork",
-   "expected": [
-    "SUS-001"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "ho-en-SUS-001-2",
-   "query": "front end feels soft",
-   "expected": [
-    "SUS-001"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "ho-en-SUS-002-1",
-   "query": "steering feels notchy",
-   "expected": [
-    "SUS-002"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "ho-en-SUS-002-2",
-   "query": "handlebar wobble",
-   "expected": [
-    "SUS-002"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "ho-en-SUS-003-1",
-   "query": "rear bounces",
-   "expected": [
-    "SUS-003"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "ho-en-SUS-003-2",
-   "query": "rear shock leaking",
-   "expected": [
-    "SUS-003"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "ho-en-SUS-004-1",
-   "query": "rattle from the suspension",
-   "expected": [
-    "SUS-004"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "ho-en-SUS-004-2",
-   "query": "clunking over bumps",
-   "expected": [
-    "SUS-004"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "ho-en-TYR-001-1",
-   "query": "tyre looks flat",
-   "expected": [
-    "TYR-001"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "ho-en-TYR-001-2",
-   "query": "low tyre pressure",
-   "expected": [
-    "TYR-001"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "ho-en-TYR-002-1",
-   "query": "tyre losing air",
-   "expected": [
-    "TYR-002"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "ho-en-TYR-002-2",
-   "query": "bulge in the tyre",
-   "expected": [
-    "TYR-002"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "ho-en-WIR-001-1",
-   "query": "electrics act strangely",
-   "expected": [
-    "WIR-001"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "ho-en-WIR-001-2",
-   "query": "several things fail at once",
-   "expected": [
-    "WIR-001"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "ho-en-WIR-002-1",
-   "query": "intermittent electrical fault",
-   "expected": [
-    "WIR-002"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "ho-en-WIR-002-2",
-   "query": "dash goes off randomly",
-   "expected": [
-    "WIR-002"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "en-g4-01",
-   "query": "my front brake discs sound like scraping iron when stopping",
-   "expected": [
-    "BRK-001"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "en-g4-02",
-   "query": "brake reservoir level dropped because friction material is almost gone",
-   "expected": [
-    "BRK-001"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "en-g4-03",
-   "query": "spongy brake feel with wet hydraulic fluid around the caliper fitting",
-   "expected": [
-    "BRK-002"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "en-g4-04",
-   "query": "anti-lock braking indicator stays lit after rolling above walking speed",
-   "expected": [
-    "BRK-006"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "en-g4-05",
-   "query": "wheel speed sensor pulser ring damage disabled anti-lock braking",
-   "expected": [
-    "BRK-006"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "en-g4-06",
-   "query": "engine rpm flares up in top gear without gaining road speed",
-   "expected": [
-    "CLU-001"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "en-g4-07",
-   "query": "motorcycle wants to roll ahead in first gear even with clutch lever pulled",
-   "expected": [
-    "CLU-002"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "en-g4-08",
-   "query": "slack clutch cable prevents complete plate disengagement",
-   "expected": [
-    "CLU-003"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "en-g4-09",
-   "query": "clutch engagement point sits right at the end of lever travel with stiff pull",
-   "expected": [
-    "CLU-005"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "en-g4-10",
-   "query": "top end metallic tapping rhythm at idle after overdue service",
-   "expected": [
-    "ENG-001"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "en-g4-11",
-   "query": "valve tappet clearance widened causing light rhythmic clicking",
-   "expected": [
-    "ENG-001"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "en-g4-12",
-   "query": "drive chain whips against the swingarm when rolling off and on gas",
-   "expected": [
-    "FDR-001"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "en-g4-13",
-   "query": "rear axle adjuster marker reached the red replacement zone",
-   "expected": [
-    "FDR-002"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "en-g4-14",
-   "query": "unlubricated orange rust on chain links making chirping noises",
-   "expected": [
-    "FDR-003"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "en-g4-15",
-   "query": "drive chain alternates between tight and loose as the rear wheel turns",
-   "expected": [
-    "FDR-004"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "en-g4-16",
-   "query": "bike starves for fuel under sustained highway throttle then recovers after resting",
-   "expected": [
-    "FUE-002"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "en-g4-17",
-   "query": "clogged fuel strainer starves the injector at high load",
-   "expected": [
-    "FUE-002"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "en-g4-18",
-   "query": "starter turns the engine over briskly but zero spark or rpm signal appears",
-   "expected": [
-    "IGN-001"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "en-g4-19",
-   "query": "single ignition coil breaks down under wide open throttle causing stumbles",
-   "expected": [
-    "IGN-003"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "en-g4-20",
-   "query": "sooty spark plug electrode causing erratic idle and difficult cold starts",
-   "expected": [
-    "IGN-004"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "en-g4-21",
-   "query": "corroded ignition harness plug causes random power loss during cranking",
-   "expected": [
-    "IGN-005"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "en-g4-22",
-   "query": "front headlamp LED went completely dark during night riding",
-   "expected": [
-    "LIT-001"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "en-g4-23",
-   "query": "rear stop lamp fails to brighten when squeezing either brake",
-   "expected": [
-    "LIT-002"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "en-g4-24",
-   "query": "instrument cluster display lost backlighting and indicator lamps",
-   "expected": [
-    "LIT-004"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "en-g4-25",
-   "query": "red oil level indicator blinks while cornering or braking hard",
-   "expected": [
-    "LUB-001"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "en-g4-26",
-   "query": "oil pressure warning stays illuminated accompanied by bottom-end knock",
-   "expected": [
-    "LUB-002"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "en-g4-27",
-   "query": "crankcase filled past upper sight-glass mark causing oily blue exhaust haze",
-   "expected": [
-    "LUB-004"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "en-g4-28",
-   "query": "wet oily film weeping down the chrome inner front fork stanchion",
-   "expected": [
-    "SUS-001"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "en-g4-29",
-   "query": "handlebars catch in a centre detent when turning slowly",
-   "expected": [
-    "SUS-002"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "en-g4-30",
-   "query": "rear monoshock oil leak leaves the tail wallowing over ripples",
-   "expected": [
-    "SUS-003"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "en-g4-31",
-   "query": "metallic knock from front axle area whenever hitting sharp bumps",
-   "expected": [
-    "SUS-004"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "en-g4-32",
-   "query": "underinflated tyres make cornering feel sluggish and vague",
-   "expected": [
-    "TYR-001"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "en-g4-33",
-   "query": "sidewall bubble or embedded screw slowly deflating the rear tyre",
-   "expected": [
-    "TYR-002"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "en-g4-34",
-   "query": "shared chassis earth corrosion makes lights and horn fail together",
-   "expected": [
-    "WIR-001"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "en-g4-35",
-   "query": "vibration over rough asphalt makes instrument power flicker off and on",
-   "expected": [
-    "WIR-002"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "en-g4-36",
-   "query": "how does llama.cpp server prompt caching compare with cloud provider caching",
-   "expected": [
-    "ideas/assistant-memory-and-alerts.md#Research brief: assistant memory, efficiency, no-dead-end answers, in-ride alerts > B. Efficiency > B1. llama.cpp server",
-    "ideas/assistant-memory-and-alerts.md#Research brief: assistant memory, efficiency, no-dead-end answers, in-ride alerts > B. Efficiency > B2. Cloud caching (as per vendor docs fetched today)"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "en-g4-37",
-   "query": "what rider HMI distraction guidance applies to real-time in-ride alerts",
-   "expected": [
-    "ideas/assistant-memory-and-alerts.md#Research brief: assistant memory, efficiency, no-dead-end answers, in-ride alerts > D. Real-time in-ride alerts > D1. HMI / distraction guidance"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "en-g4-38",
-   "query": "how are alert priority levels and fatigue handled for rider alerts",
-   "expected": [
-    "ideas/assistant-memory-and-alerts.md#Research brief: assistant memory, efficiency, no-dead-end answers, in-ride alerts > D. Real-time in-ride alerts > D2. Priority, interruption, fatigue [P unless cited]"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "en-g4-39",
-   "query": "what is the no dead end fallback ladder when no exact tool matches",
-   "expected": [
-    "ideas/assistant-memory-and-alerts.md#Research brief: assistant memory, efficiency, no-dead-end answers, in-ride alerts > C. \"Never a dead end\" patterns"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "en-g4-40",
-   "query": "what are the five biggest risks in the layered assistant memory and alert design",
-   "expected": [
-    "ideas/assistant-memory-and-alerts.md#Research brief: assistant memory, efficiency, no-dead-end answers, in-ride alerts > E. Recommendation (layered design) > E5. Five biggest risks"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "en-g4-41",
-   "query": "how does privacy deletion work for stored assistant conversations",
-   "expected": [
-    "ideas/assistant-memory-and-alerts.md#Research brief: assistant memory, efficiency, no-dead-end answers, in-ride alerts > A. Conversation memory > A3. Privacy / GDPR-ish deletion"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "en-g4-42",
-   "query": "why was Tauri 2.0 chosen for the desktop CAN analyzer shell",
-   "expected": [
-    "ideas/can-analyzer-master-plan.md#vehicle-platform CAN Analyzer & Telemetry Cockpit — Master Plan & Market Benchmark > 4. Cross-Platform Strategy: Web Host → Mac / Linux / Windows Desktop > Why Tauri 2.0 for Desktop?"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "en-g4-43",
-   "query": "what are the architectural boundaries separating CAN analyzer from MCP and ML",
-   "expected": [
-    "ideas/can-analyzer-master-plan.md#vehicle-platform CAN Analyzer & Telemetry Cockpit — Master Plan & Market Benchmark > 1.2 System Boundaries & Architectural Decoupling: CAN Analyzer vs. MCP vs. ML"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "en-g4-44",
-   "query": "how does the CAN analyzer compare against Vector CANalyzer SavvyCAN and Foxglove",
-   "expected": [
-    "ideas/can-analyzer-master-plan.md#vehicle-platform CAN Analyzer & Telemetry Cockpit — Master Plan & Market Benchmark > 2. Market Benchmark: Comprehensive Analysis of CAN Platforms"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "en-g4-45",
-   "query": "what does the UDS diagnostics layer of the CAN analyzer cover",
-   "expected": [
-    "ideas/can-analyzer-master-plan.md#vehicle-platform CAN Analyzer & Telemetry Cockpit — Master Plan & Market Benchmark > 3. Comprehensive Functional Inventory: What We Need for CAN Analysis > Layer 5: UDS Diagnostics & Vehicle Health (ISO 14229 / ISO 15765-2)"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "en-g4-46",
-   "query": "how does the proposed 8-DID polling configuration balance CAN bus capacity",
-   "expected": [
-    "ideas/can-data-expansion.md#Field Data Expansion Plan and Technical Necessity Analysis > 2. Polling Budget and Bus Capacity Engineering (D-029 Recalibration) > Proposed Balanced Configuration (8 DIDs — Expanded Feature Set)"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "en-g4-47",
-   "query": "how does task V-09 define the Kamm friction circle curve braking safety envelope",
-   "expected": [
-    "ideas/can-data-expansion.md#Field Data Expansion Plan and Technical Necessity Analysis > 4. Active Safety, Vision & Cockpit Telemetry Engineering Tasks > 4.9. Task V-09: Kamm Friction Circle Curve-Braking Safety Envelope & Haptic Warning"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "en-g4-48",
-   "query": "what frequency band does task V-10 monitor for motorcycle speed wobble tank slapper",
-   "expected": [
-    "ideas/can-data-expansion.md#Field Data Expansion Plan and Technical Necessity Analysis > 4. Active Safety, Vision & Cockpit Telemetry Engineering Tasks > 4.10. Task V-10: Tank-Slapper (Speed Wobble) 6-9 Hz Harmonic Resonance Detector & Mitigator"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "en-g4-49",
-   "query": "how does task V-14 handle automated post-crash eCall SOS dispatch",
-   "expected": [
-    "ideas/can-data-expansion.md#Field Data Expansion Plan and Technical Necessity Analysis > 4. Active Safety, Vision & Cockpit Telemetry Engineering Tasks > 4.14. Task V-14: Automated Post-Crash Fuel/Ignition Isolation & Cellular eCall SOS Dispatch"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "en-g4-50",
-   "query": "what is the Honda CL250 stator alternator rated power and pole count",
-   "expected": [
-    "ideas/cl250-technical-baseline.md#Honda CL250 (8BK-MC57) — Technical Baseline & Service Specifications > 2. Electrical, Charging & Starting System Baseline > 2.2 Alternator / AC Generator (Stator)"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "en-g4-51",
-   "query": "what are the CL250 regulator rectifier output voltage pass limits",
-   "expected": [
-    "ideas/cl250-technical-baseline.md#Honda CL250 (8BK-MC57) — Technical Baseline & Service Specifications > 2. Electrical, Charging & Starting System Baseline > 2.3 Regulator / Rectifier (R/R)"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "en-g4-52",
-   "query": "what starter motor inrush and steady cranking currents are listed for CL250",
-   "expected": [
-    "ideas/cl250-technical-baseline.md#Honda CL250 (8BK-MC57) — Technical Baseline & Service Specifications > 2. Electrical, Charging & Starting System Baseline > 2.4 Starter Motor & Cranking Profile"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "en-g4-53",
-   "query": "why was the Allegro ACS758LCB-200B current sensor chosen over a 50 A sensor",
-   "expected": [
-    "ideas/cl250-technical-baseline.md#Honda CL250 (8BK-MC57) — Technical Baseline & Service Specifications > 3. Sensor Selection Cross-Reference for Anomaly Models"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "en-g4-54",
-   "query": "how can a provisional D-103 derived signal threshold value be replaced",
-   "expected": [
-    "ideas/derived-thresholds-research.md#Derived-signal thresholds: research brief (D-103) > How to replace a value"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "en-g4-55",
-   "query": "what are the four inviolable safety and isolation rules in the MCP scenarios doc",
-   "expected": [
-    "ideas/mcp-scenarios.md#Model Context Protocol (MCP) Server: Architecture, Scenarios & AI Agent Capabilities > 1. Executive Summary & Architectural Philosophy > Safety & Isolation Boundary (The 4 Inviolable Rules)"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "en-g4-56",
-   "query": "how does MCP scenario 4.1 model clutch slip index and transmission wear",
-   "expected": [
-    "ideas/mcp-scenarios.md#Model Context Protocol (MCP) Server: Architecture, Scenarios & AI Agent Capabilities > 3. Deep-Dive Operational Scenarios > Domain 4: Predictive Component Health & Micro-Wear Modeling > Scenario 4.1: Clutch Slip Index & Transmission Degradation"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "en-g4-57",
-   "query": "why is mapping node health heartbeats onto VSS blocked today",
-   "expected": [
-    "ideas/node-health-vss.md#Node health on VSS (Q-016, D-004): proposal for the user's approval > Why it is blocked today"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "en-g4-58",
-   "query": "how does Option C handle node heartbeats directly in linux-node",
-   "expected": [
-    "ideas/node-health-vss.md#Node health on VSS (Q-016, D-004): proposal for the user's approval > Option C: linux-node reads the heartbeats itself"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "en-g4-59",
-   "query": "what fields are proposed in the D-084 fault catalog schema draft",
-   "expected": [
-    "ideas/physics-informed-anomaly.md#Physics-informed anomaly model and fault catalog (idea note) > 2. Fault catalog schema draft (D-084)"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "en-g4-60",
-   "query": "what provider terms govern training with synthetic LLM outputs",
-   "expected": [
-    "ideas/ride-llm.md#Ride LLM research brief (2026-11-26) > 3. Distillation and synthetic data > Terms on training with provider outputs (exact quotes fetched 2026-11-26)"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "en-g4-61",
-   "query": "which vector stores are compared for running RAG on a Raspberry Pi",
-   "expected": [
-    "ideas/ride-llm.md#Ride LLM research brief (2026-11-26) > 4. RAG for technical manuals > Vector stores on a Pi"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "en-g4-62",
-   "query": "how should technical manuals and tables be chunked for RAG retrieval",
-   "expected": [
-    "ideas/ride-llm.md#Ride LLM research brief (2026-11-26) > 4. RAG for technical manuals > Chunking for manuals/tables [P]"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "en-g4-63",
-   "query": "what is the neuro-symbolic knowledge graph approach in the Ride LLM brief",
-   "expected": [
-    "ideas/ride-llm.md#Ride LLM research brief (2026-11-26) > 5. Neuro-symbolic / knowledge graph"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "en-g4-64",
-   "query": "what are the stages of the recommended Ride LLM roadmap",
-   "expected": [
-    "ideas/ride-llm.md#Ride LLM research brief (2026-11-26) > 8. Recommendation: staged roadmap \"Ride LLM\""
-   ],
-   "split": "test"
-  },
-  {
-   "id": "en-g4-65",
-   "query": "what byte sizes result from the proposed ride-summary DID layout 0xFD40",
-   "expected": [
-    "ideas/ride-summary-did-layout.md#Ride-summary DID layout (C3 part 2b) — proposal, awaiting the user > Resulting sizes (scalar fields + 4 B header, computed from the current YAML)"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "en-g4-66",
-   "query": "what did the DeepSeek compatibility review conclude on the ride-summary DID layout",
-   "expected": [
-    "ideas/ride-summary-did-layout.md#Ride-summary DID layout (C3 part 2b) — proposal, awaiting the user > Compatibility review (DeepSeek, 2026-11-02)"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "en-g4-67",
-   "query": "how does the hybrid relationship graph localise untagged anomalies",
-   "expected": [
-    "ideas/vehicle-agnostic-anomaly-reasoning.md#Vehicle-agnostic anomaly reasoning and generalisation (idea note) > 2. Relationship graph (hybrid)"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "en-g4-68",
-   "query": "how is healthy baseline defined on a single possibly faulty motorcycle",
-   "expected": [
-    "ideas/vehicle-agnostic-anomaly-reasoning.md#Vehicle-agnostic anomaly reasoning and generalisation (idea note) > 5. Reference problem on a single, possibly faulty vehicle"
-   ],
-   "split": "test"
-  },
-  {
-   "id": "en-g4-69",
-   "query": "what guardrails constrain anomaly hypotheses in the vehicle-agnostic reasoning pipeline",
-   "expected": [
-    "ideas/vehicle-agnostic-anomaly-reasoning.md#Vehicle-agnostic anomaly reasoning and generalisation (idea note) > 3. Guardrails"
-   ],
-   "split": "tune"
-  },
-  {
-   "id": "en-g4-70",
-   "query": "what is the difference between Scale 1A and higher scale tiers in the signal taxonomy",
-   "expected": [
-    "ideas/vehicle-signal-taxonomy.md#Vehicle Signal Taxonomy Beyond the CL250 (Groups G and I, Scale Tiers) > 3. Scale tiers (product direction, D-078)"
-   ],
-   "split": "test"
-  }
+  {"id": "en-01", "query": "ticking noise from the valves at idle", "expected": ["ENG-001"], "split": "tune"},
+  {"id": "en-02", "query": "engine makes a rapid sewing-machine ticking sound", "expected": ["ENG-001"], "split": "tune"},
+  {"id": "en-03", "query": "brake pads squealing and metal grinding sound", "expected": ["BRK-001"], "split": "tune"},
+  {"id": "en-04", "query": "brake fluid level dropping with soft lever", "expected": ["BRK-002"], "split": "tune"},
+  {"id": "en-05", "query": "ABS warning lamp stays on and ABS not working", "expected": ["BRK-006"], "split": "tune"},
+  {"id": "en-06", "query": "clutch slipping revs climb without accelerating", "expected": ["CLU-001"], "split": "tune"},
+  {"id": "en-07", "query": "bike creeps forward with clutch pulled and hard to find neutral", "expected": ["CLU-002"], "split": "tune"},
+  {"id": "en-08", "query": "clutch lever has too much free play", "expected": ["CLU-003"], "split": "tune"},
+  {"id": "en-09", "query": "stiff clutch lever grinding when changing gears", "expected": ["CLU-005"], "split": "tune"},
+  {"id": "en-10", "query": "loose drive chain clunking when opening throttle", "expected": ["FDR-001"], "split": "tune"},
+  {"id": "en-11", "query": "chain stretched past wear limit red zone", "expected": ["FDR-002"], "split": "tune"},
+  {"id": "en-12", "query": "dry rusty chain squeaking and rattling", "expected": ["FDR-003"], "split": "tune"},
+  {"id": "en-13", "query": "tight spots in drive chain surging at steady speed", "expected": ["FDR-004"], "split": "tune"},
+  {"id": "en-14", "query": "loses power at highway speed and hesitates under load", "expected": ["FUE-002"], "split": "tune"},
+  {"id": "en-15", "query": "engine cranks normally but will not start no crankshaft signal", "expected": ["IGN-001"], "split": "tune"},
+  {"id": "en-16", "query": "engine misfiring under throttle with weak ignition coil", "expected": ["IGN-003"], "split": "tune"},
+  {"id": "en-17", "query": "hard starting rough idle fouled spark plug", "expected": ["IGN-004"], "split": "tune"},
+  {"id": "en-18", "query": "intermittent starting problem loose ignition connector", "expected": ["IGN-005"], "split": "tune"},
+  {"id": "en-19", "query": "headlight completely out no forward beam", "expected": ["LIT-001"], "split": "tune"},
+  {"id": "en-20", "query": "tail light and brake lamp stopped working", "expected": ["LIT-002"], "split": "tune"},
+  {"id": "en-21", "query": "dashboard backlight dark and warning lamp out", "expected": ["LIT-004"], "split": "tune"},
+  {"id": "en-22", "query": "oil warning light flickering low engine oil level", "expected": ["LUB-001"], "split": "tune"},
+  {"id": "en-23", "query": "low oil pressure lamp on with engine knocking", "expected": ["LUB-002"], "split": "tune"},
+  {"id": "en-24", "query": "blue smoke from exhaust overfilled engine oil", "expected": ["LUB-004"], "split": "tune"},
+  {"id": "en-25", "query": "oil leaking down front fork tube seal", "expected": ["SUS-001"], "split": "tune"},
+  {"id": "en-26", "query": "notchy steering head bearing clunk under braking", "expected": ["SUS-002"], "split": "tune"},
+  {"id": "en-27", "query": "rear shock bouncing after bumps oil leak", "expected": ["SUS-003"], "split": "tune"},
+  {"id": "en-28", "query": "clunking noise from suspension over potholes loose axle", "expected": ["SUS-004"], "split": "tune"},
+  {"id": "en-29", "query": "heavy steering bike feels unstable low tyre pressure", "expected": ["TYR-001"], "split": "tune"},
+  {"id": "en-30", "query": "nail in tyre slow puncture losing air", "expected": ["TYR-002"], "split": "tune"},
+  {"id": "en-31", "query": "multiple electrical circuits failing together corroded ground", "expected": ["WIR-001"], "split": "tune"},
+  {"id": "en-32", "query": "headlight cuts out over bumps intermittent connector", "expected": ["WIR-002"], "split": "tune"},
+  {"id": "en-33", "query": "Apple Silicon MLX-LM fine-tuning workflow for Ride LLM", "expected": ["ideas/ride-llm.md#2. Fine-tuning on a budget > Apple Silicon (MLX-LM)"], "split": "tune"},
+  {"id": "en-34", "query": "GGUF conversion and quantisation steps for small models", "expected": ["ideas/ride-llm.md#2. Fine-tuning on a budget > GGUF conversion and quantisation"], "split": "tune"},
+  {"id": "en-35", "query": "copyrighted manuals legal framing in a public repo", "expected": ["ideas/ride-llm.md#4. RAG for technical manuals > Copyrighted manuals in a public repo (legal framing, NOT legal advice) [P]"], "split": "tune"},
+  {"id": "en-36", "query": "multilingual small embedding models comparison for RAG", "expected": ["ideas/ride-llm.md#4. RAG for technical manuals > Embedding models (multilingual, small)"], "split": "tune"},
+  {"id": "en-37", "query": "serving small language models on Raspberry Pi 5 8 GB", "expected": ["ideas/ride-llm.md#7. Edge serving (Pi 5 8 GB)"], "split": "tune"},
+  {"id": "en-38", "query": "conversation memory tiers and token budgets for 4k context", "expected": ["ideas/assistant-memory-and-alerts.md#E. Recommendation (layered design) > E2. Memory tiers and token budgets", "ideas/assistant-memory-and-alerts.md#A. Conversation memory > A4. What fits a 4k-context 1.5B model on a Pi"], "split": "tune"},
+  {"id": "en-39", "query": "real-time in-ride alert transport without paid push provider", "expected": ["ideas/assistant-memory-and-alerts.md#D. Real-time in-ride alerts > D3. Transport without a paid push provider"], "split": "tune"},
+  {"id": "en-40", "query": "Honda CL250 battery specification and charging system baseline", "expected": ["ideas/cl250-technical-baseline.md#2. Electrical, Charging & Starting System Baseline > 2.1 Battery Specification"], "split": "tune"},
+  {"id": "en-41", "query": "stage 0 subsystem physics models for anomaly detection", "expected": ["ideas/physics-informed-anomaly.md#1. Stage 0: subsystem physics models (D-083 level 1)"], "split": "tune"},
+  {"id": "en-42", "query": "node health heartbeat VSS branch proposal Option A", "expected": ["ideas/node-health-vss.md#Option A (recommended): per-node signal names + one VSS branch"], "split": "tune"},
+  {"id": "ho-en-BRK-001-1", "query": "squealing brakes", "expected": ["BRK-001"], "split": "holdout"},
+  {"id": "ho-en-BRK-001-2", "query": "metal grinding when braking", "expected": ["BRK-001"], "split": "holdout"},
+  {"id": "ho-en-BRK-002-1", "query": "brake lever feels soft", "expected": ["BRK-002"], "split": "holdout"},
+  {"id": "ho-en-BRK-002-2", "query": "brake fluid leak", "expected": ["BRK-002"], "split": "holdout"},
+  {"id": "ho-en-BRK-006-1", "query": "ABS light on", "expected": ["BRK-006"], "split": "holdout"},
+  {"id": "ho-en-BRK-006-2", "query": "ABS not working", "expected": ["BRK-006"], "split": "holdout"},
+  {"id": "ho-en-CLU-001-1", "query": "clutch slipping", "expected": ["CLU-001"], "split": "holdout"},
+  {"id": "ho-en-CLU-001-2", "query": "burning smell from the clutch", "expected": ["CLU-001"], "split": "holdout"},
+  {"id": "ho-en-CLU-002-1", "query": "bike creeps with the clutch pulled", "expected": ["CLU-002"], "split": "holdout"},
+  {"id": "ho-en-CLU-002-2", "query": "lurches when engaging a gear", "expected": ["CLU-002"], "split": "holdout"},
+  {"id": "ho-en-CLU-003-1", "query": "clutch lever has too much play", "expected": ["CLU-003"], "split": "holdout"},
+  {"id": "ho-en-CLU-003-2", "query": "clutch lever has no free play", "expected": ["CLU-003"], "split": "holdout"},
+  {"id": "ho-en-CLU-005-1", "query": "clutch lever feels tight", "expected": ["CLU-005"], "split": "holdout"},
+  {"id": "ho-en-CLU-005-2", "query": "clutch bites too late", "expected": ["CLU-005"], "split": "holdout"},
+  {"id": "ho-en-ENG-001-1", "query": "ticking noise from the top of the engine", "expected": ["ENG-001"], "split": "holdout"},
+  {"id": "ho-en-ENG-001-2", "query": "engine sounds like a sewing machine", "expected": ["ENG-001"], "split": "holdout"},
+  {"id": "ho-en-FDR-001-1", "query": "chain is loose", "expected": ["FDR-001"], "split": "holdout"},
+  {"id": "ho-en-FDR-001-2", "query": "chain slapping noise", "expected": ["FDR-001"], "split": "holdout"},
+  {"id": "ho-en-FDR-002-1", "query": "chain is worn out", "expected": ["FDR-002"], "split": "holdout"},
+  {"id": "ho-en-FDR-002-2", "query": "chain looks stretched", "expected": ["FDR-002"], "split": "holdout"},
+  {"id": "ho-en-FDR-003-1", "query": "chain is noisy", "expected": ["FDR-003"], "split": "holdout"},
+  {"id": "ho-en-FDR-003-2", "query": "chain rattle", "expected": ["FDR-003"], "split": "holdout"},
+  {"id": "ho-en-FDR-004-1", "query": "chain stiff in places", "expected": ["FDR-004"], "split": "holdout"},
+  {"id": "ho-en-FDR-004-2", "query": "jerking at constant speed", "expected": ["FDR-004"], "split": "holdout"},
+  {"id": "ho-en-FUE-002-1", "query": "loses power at high speed", "expected": ["FUE-002"], "split": "holdout"},
+  {"id": "ho-en-FUE-002-2", "query": "stalls and restarts after a wait", "expected": ["FUE-002"], "split": "holdout"},
+  {"id": "ho-en-IGN-001-1", "query": "engine suddenly will not start", "expected": ["IGN-001"], "split": "holdout"},
+  {"id": "ho-en-IGN-001-2", "query": "cranks but does not start", "expected": ["IGN-001"], "split": "holdout"},
+  {"id": "ho-en-IGN-003-1", "query": "engine misfires", "expected": ["IGN-003"], "split": "holdout"},
+  {"id": "ho-en-IGN-003-2", "query": "loss of power with rough running", "expected": ["IGN-003"], "split": "holdout"},
+  {"id": "ho-en-IGN-004-1", "query": "hard to start", "expected": ["IGN-004"], "split": "holdout"},
+  {"id": "ho-en-IGN-004-2", "query": "engine runs rough", "expected": ["IGN-004"], "split": "holdout"},
+  {"id": "ho-en-IGN-005-1", "query": "starts only sometimes", "expected": ["IGN-005"], "split": "holdout"},
+  {"id": "ho-en-IGN-005-2", "query": "electrics drop out when cranking", "expected": ["IGN-005"], "split": "holdout"},
+  {"id": "ho-en-LIT-001-1", "query": "headlight not working", "expected": ["LIT-001"], "split": "holdout"},
+  {"id": "ho-en-LIT-001-2", "query": "headlight went out", "expected": ["LIT-001"], "split": "holdout"},
+  {"id": "ho-en-LIT-002-1", "query": "brake light not working", "expected": ["LIT-002"], "split": "holdout"},
+  {"id": "ho-en-LIT-002-2", "query": "tail light out", "expected": ["LIT-002"], "split": "holdout"},
+  {"id": "ho-en-LIT-004-1", "query": "dash backlight out", "expected": ["LIT-004"], "split": "holdout"},
+  {"id": "ho-en-LIT-004-2", "query": "dash is dark", "expected": ["LIT-004"], "split": "holdout"},
+  {"id": "ho-en-LUB-001-1", "query": "oil light on", "expected": ["LUB-001"], "split": "holdout"},
+  {"id": "ho-en-LUB-001-2", "query": "oil warning light flickers", "expected": ["LUB-001"], "split": "holdout"},
+  {"id": "ho-en-LUB-002-1", "query": "oil pressure light on", "expected": ["LUB-002"], "split": "holdout"},
+  {"id": "ho-en-LUB-002-2", "query": "engine noise together with the oil light", "expected": ["LUB-002"], "split": "holdout"},
+  {"id": "ho-en-LUB-004-1", "query": "oil level above the mark", "expected": ["LUB-004"], "split": "holdout"},
+  {"id": "ho-en-LUB-004-2", "query": "oil overfilled", "expected": ["LUB-004"], "split": "holdout"},
+  {"id": "ho-en-SUS-001-1", "query": "oil on the fork", "expected": ["SUS-001"], "split": "holdout"},
+  {"id": "ho-en-SUS-001-2", "query": "front end feels soft", "expected": ["SUS-001"], "split": "holdout"},
+  {"id": "ho-en-SUS-002-1", "query": "steering feels notchy", "expected": ["SUS-002"], "split": "holdout"},
+  {"id": "ho-en-SUS-002-2", "query": "handlebar wobble", "expected": ["SUS-002"], "split": "holdout"},
+  {"id": "ho-en-SUS-003-1", "query": "rear bounces", "expected": ["SUS-003"], "split": "holdout"},
+  {"id": "ho-en-SUS-003-2", "query": "rear shock leaking", "expected": ["SUS-003"], "split": "holdout"},
+  {"id": "ho-en-SUS-004-1", "query": "rattle from the suspension", "expected": ["SUS-004"], "split": "holdout"},
+  {"id": "ho-en-SUS-004-2", "query": "clunking over bumps", "expected": ["SUS-004"], "split": "holdout"},
+  {"id": "ho-en-TYR-001-1", "query": "tyre looks flat", "expected": ["TYR-001"], "split": "holdout"},
+  {"id": "ho-en-TYR-001-2", "query": "low tyre pressure", "expected": ["TYR-001"], "split": "holdout"},
+  {"id": "ho-en-TYR-002-1", "query": "tyre losing air", "expected": ["TYR-002"], "split": "holdout"},
+  {"id": "ho-en-TYR-002-2", "query": "bulge in the tyre", "expected": ["TYR-002"], "split": "holdout"},
+  {"id": "ho-en-WIR-001-1", "query": "electrics act strangely", "expected": ["WIR-001"], "split": "holdout"},
+  {"id": "ho-en-WIR-001-2", "query": "several things fail at once", "expected": ["WIR-001"], "split": "holdout"},
+  {"id": "ho-en-WIR-002-1", "query": "intermittent electrical fault", "expected": ["WIR-002"], "split": "holdout"},
+  {"id": "ho-en-WIR-002-2", "query": "dash goes off randomly", "expected": ["WIR-002"], "split": "holdout"},
+  {"id": "en-g4-01", "query": "my front brake discs sound like scraping iron when stopping", "expected": ["BRK-001"], "split": "tune"},
+  {"id": "en-g4-02", "query": "brake reservoir level dropped because friction material is almost gone", "expected": ["BRK-001"], "split": "test"},
+  {"id": "en-g4-03", "query": "spongy brake feel with wet hydraulic fluid around the caliper fitting", "expected": ["BRK-002"], "split": "test"},
+  {"id": "en-g4-04", "query": "anti-lock braking indicator stays lit after rolling above walking speed", "expected": ["BRK-006"], "split": "tune"},
+  {"id": "en-g4-05", "query": "wheel speed sensor pulser ring damage disabled anti-lock braking", "expected": ["BRK-006"], "split": "tune"},
+  {"id": "en-g4-06", "query": "engine revs climb in a high gear but the motorcycle does not pick up speed", "expected": ["CLU-001"], "split": "test"},
+  {"id": "en-g4-07", "query": "motorcycle wants to roll ahead in first gear even with clutch lever pulled", "expected": ["CLU-002"], "split": "test"},
+  {"id": "en-g4-08", "query": "slack clutch cable prevents complete plate disengagement", "expected": ["CLU-003"], "split": "test"},
+  {"id": "en-g4-09", "query": "clutch engagement point sits right at the end of lever travel with stiff pull", "expected": ["CLU-005"], "split": "test"},
+  {"id": "en-g4-10", "query": "top end metallic tapping rhythm at idle after overdue service", "expected": ["ENG-001"], "split": "test"},
+  {"id": "en-g4-11", "query": "valve tappet clearance widened causing light rhythmic clicking", "expected": ["ENG-001"], "split": "tune"},
+  {"id": "en-g4-12", "query": "drive chain whips against the swingarm when rolling off and on gas", "expected": ["FDR-001"], "split": "tune"},
+  {"id": "en-g4-13", "query": "rear axle adjuster marker reached the red replacement zone", "expected": ["FDR-002"], "split": "test"},
+  {"id": "en-g4-14", "query": "unlubricated orange rust on chain links making chirping noises", "expected": ["FDR-003"], "split": "tune"},
+  {"id": "en-g4-15", "query": "drive chain alternates between tight and loose as the rear wheel turns", "expected": ["FDR-004"], "split": "test"},
+  {"id": "en-g4-16", "query": "bike starves for fuel under sustained highway throttle then recovers after resting", "expected": ["FUE-002"], "split": "test"},
+  {"id": "en-g4-17", "query": "clogged fuel strainer starves the injector at high load", "expected": ["FUE-002"], "split": "test"},
+  {"id": "en-g4-18", "query": "starter turns the engine over briskly but zero spark or rpm signal appears", "expected": ["IGN-001"], "split": "tune"},
+  {"id": "en-g4-19", "query": "single ignition coil breaks down under wide open throttle causing stumbles", "expected": ["IGN-003"], "split": "test"},
+  {"id": "en-g4-20", "query": "sooty spark plug electrode causing erratic idle and difficult cold starts", "expected": ["IGN-004"], "split": "test"},
+  {"id": "en-g4-21", "query": "corroded ignition harness plug causes random power loss during cranking", "expected": ["IGN-005"], "split": "tune"},
+  {"id": "en-g4-22", "query": "front headlamp LED went completely dark during night riding", "expected": ["LIT-001"], "split": "tune"},
+  {"id": "en-g4-23", "query": "rear stop lamp fails to brighten when squeezing either brake", "expected": ["LIT-002"], "split": "test"},
+  {"id": "en-g4-24", "query": "instrument cluster display lost backlighting and indicator lamps", "expected": ["LIT-004"], "split": "tune"},
+  {"id": "en-g4-25", "query": "red oil level indicator blinks while cornering or braking hard", "expected": ["LUB-001"], "split": "test"},
+  {"id": "en-g4-26", "query": "oil pressure warning stays illuminated accompanied by bottom-end knock", "expected": ["LUB-002"], "split": "tune"},
+  {"id": "en-g4-27", "query": "crankcase filled past upper sight-glass mark causing oily blue exhaust haze", "expected": ["LUB-004"], "split": "tune"},
+  {"id": "en-g4-28", "query": "wet oily film weeping down the chrome inner front fork stanchion", "expected": ["SUS-001"], "split": "tune"},
+  {"id": "en-g4-29", "query": "handlebars catch in a centre detent when turning slowly", "expected": ["SUS-002"], "split": "tune"},
+  {"id": "en-g4-30", "query": "rear monoshock oil leak leaves the tail wallowing over ripples", "expected": ["SUS-003"], "split": "tune"},
+  {"id": "en-g4-31", "query": "metallic knock from front axle area whenever hitting sharp bumps", "expected": ["SUS-004"], "split": "test"},
+  {"id": "en-g4-32", "query": "underinflated tyres make cornering feel sluggish and vague", "expected": ["TYR-001"], "split": "test"},
+  {"id": "en-g4-33", "query": "sidewall bubble or embedded screw slowly deflating the rear tyre", "expected": ["TYR-002"], "split": "tune"},
+  {"id": "en-g4-34", "query": "shared chassis earth corrosion makes lights and horn fail together", "expected": ["WIR-001"], "split": "tune"},
+  {"id": "en-g4-35", "query": "vibration over rough asphalt makes instrument power flicker off and on", "expected": ["WIR-002"], "split": "test"},
+  {"id": "en-g4-36", "query": "how does llama.cpp server prompt caching compare with cloud provider caching", "expected": ["ideas/assistant-memory-and-alerts.md#Research brief: assistant memory, efficiency, no-dead-end answers, in-ride alerts > B. Efficiency > B1. llama.cpp server", "ideas/assistant-memory-and-alerts.md#Research brief: assistant memory, efficiency, no-dead-end answers, in-ride alerts > B. Efficiency > B2. Cloud caching (as per vendor docs fetched today)"], "split": "tune"},
+  {"id": "en-g4-37", "query": "what rider HMI distraction guidance applies to real-time in-ride alerts", "expected": ["ideas/assistant-memory-and-alerts.md#Research brief: assistant memory, efficiency, no-dead-end answers, in-ride alerts > D. Real-time in-ride alerts > D1. HMI / distraction guidance"], "split": "tune"},
+  {"id": "en-g4-38", "query": "how are alert priority levels and fatigue handled for rider alerts", "expected": ["ideas/assistant-memory-and-alerts.md#Research brief: assistant memory, efficiency, no-dead-end answers, in-ride alerts > D. Real-time in-ride alerts > D2. Priority, interruption, fatigue [P unless cited]"], "split": "tune"},
+  {"id": "en-g4-39", "query": "what is the no dead end fallback ladder when no exact tool matches", "expected": ["ideas/assistant-memory-and-alerts.md#Research brief: assistant memory, efficiency, no-dead-end answers, in-ride alerts > C. \"Never a dead end\" patterns"], "split": "tune"},
+  {"id": "en-g4-40", "query": "what are the five biggest risks in the layered assistant memory and alert design", "expected": ["ideas/assistant-memory-and-alerts.md#Research brief: assistant memory, efficiency, no-dead-end answers, in-ride alerts > E. Recommendation (layered design) > E5. Five biggest risks"], "split": "test"},
+  {"id": "en-g4-41", "query": "how does privacy deletion work for stored assistant conversations", "expected": ["ideas/assistant-memory-and-alerts.md#Research brief: assistant memory, efficiency, no-dead-end answers, in-ride alerts > A. Conversation memory > A3. Privacy / GDPR-ish deletion"], "split": "tune"},
+  {"id": "en-g4-42", "query": "why was Tauri 2.0 chosen for the desktop CAN analyzer shell", "expected": ["ideas/can-analyzer-master-plan.md#vehicle-platform CAN Analyzer & Telemetry Cockpit — Master Plan & Market Benchmark > 4. Cross-Platform Strategy: Web Host → Mac / Linux / Windows Desktop > Why Tauri 2.0 for Desktop?"], "split": "tune"},
+  {"id": "en-g4-43", "query": "what are the architectural boundaries separating CAN analyzer from MCP and ML", "expected": ["ideas/can-analyzer-master-plan.md#vehicle-platform CAN Analyzer & Telemetry Cockpit — Master Plan & Market Benchmark > 1.2 System Boundaries & Architectural Decoupling: CAN Analyzer vs. MCP vs. ML"], "split": "test"},
+  {"id": "en-g4-44", "query": "how does the CAN analyzer compare against Vector CANalyzer SavvyCAN and Foxglove", "expected": ["ideas/can-analyzer-master-plan.md#vehicle-platform CAN Analyzer & Telemetry Cockpit — Master Plan & Market Benchmark > 2. Market Benchmark: Comprehensive Analysis of CAN Platforms"], "split": "test"},
+  {"id": "en-g4-45", "query": "what does the UDS diagnostics layer of the CAN analyzer cover", "expected": ["ideas/can-analyzer-master-plan.md#vehicle-platform CAN Analyzer & Telemetry Cockpit — Master Plan & Market Benchmark > 3. Comprehensive Functional Inventory: What We Need for CAN Analysis > Layer 5: UDS Diagnostics & Vehicle Health (ISO 14229 / ISO 15765-2)"], "split": "test"},
+  {"id": "en-g4-46", "query": "how does the proposed 8-DID polling configuration balance CAN bus capacity", "expected": ["ideas/can-data-expansion.md#Field Data Expansion Plan and Technical Necessity Analysis > 2. Polling Budget and Bus Capacity Engineering (D-029 Recalibration) > Proposed Balanced Configuration (8 DIDs — Expanded Feature Set)"], "split": "test"},
+  {"id": "en-g4-47", "query": "how does task V-09 define the Kamm friction circle curve braking safety envelope", "expected": ["ideas/can-data-expansion.md#Field Data Expansion Plan and Technical Necessity Analysis > 4. Active Safety, Vision & Cockpit Telemetry Engineering Tasks > 4.9. Task V-09: Kamm Friction Circle Curve-Braking Safety Envelope & Haptic Warning"], "split": "tune"},
+  {"id": "en-g4-48", "query": "what frequency band does task V-10 monitor for motorcycle speed wobble tank slapper", "expected": ["ideas/can-data-expansion.md#Field Data Expansion Plan and Technical Necessity Analysis > 4. Active Safety, Vision & Cockpit Telemetry Engineering Tasks > 4.10. Task V-10: Tank-Slapper (Speed Wobble) 6-9 Hz Harmonic Resonance Detector & Mitigator"], "split": "tune"},
+  {"id": "en-g4-49", "query": "how does task V-14 handle automated post-crash eCall SOS dispatch", "expected": ["ideas/can-data-expansion.md#Field Data Expansion Plan and Technical Necessity Analysis > 4. Active Safety, Vision & Cockpit Telemetry Engineering Tasks > 4.14. Task V-14: Automated Post-Crash Fuel/Ignition Isolation & Cellular eCall SOS Dispatch"], "split": "test"},
+  {"id": "en-g4-50", "query": "what is the Honda CL250 stator alternator rated power and pole count", "expected": ["ideas/cl250-technical-baseline.md#Honda CL250 (8BK-MC57) — Technical Baseline & Service Specifications > 2. Electrical, Charging & Starting System Baseline > 2.2 Alternator / AC Generator (Stator)"], "split": "test"},
+  {"id": "en-g4-51", "query": "what are the CL250 regulator rectifier output voltage pass limits", "expected": ["ideas/cl250-technical-baseline.md#Honda CL250 (8BK-MC57) — Technical Baseline & Service Specifications > 2. Electrical, Charging & Starting System Baseline > 2.3 Regulator / Rectifier (R/R)"], "split": "tune"},
+  {"id": "en-g4-52", "query": "what starter motor inrush and steady cranking currents are listed for CL250", "expected": ["ideas/cl250-technical-baseline.md#Honda CL250 (8BK-MC57) — Technical Baseline & Service Specifications > 2. Electrical, Charging & Starting System Baseline > 2.4 Starter Motor & Cranking Profile"], "split": "test"},
+  {"id": "en-g4-53", "query": "why was the Allegro ACS758LCB-200B current sensor chosen over a 50 A sensor", "expected": ["ideas/cl250-technical-baseline.md#Honda CL250 (8BK-MC57) — Technical Baseline & Service Specifications > 3. Sensor Selection Cross-Reference for Anomaly Models"], "split": "tune"},
+  {"id": "en-g4-54", "query": "how can a provisional D-103 derived signal threshold value be replaced", "expected": ["ideas/derived-thresholds-research.md#Derived-signal thresholds: research brief (D-103) > How to replace a value"], "split": "test"},
+  {"id": "en-g4-55", "query": "what are the four inviolable safety and isolation rules in the MCP scenarios doc", "expected": ["ideas/mcp-scenarios.md#Model Context Protocol (MCP) Server: Architecture, Scenarios & AI Agent Capabilities > 1. Executive Summary & Architectural Philosophy > Safety & Isolation Boundary (The 4 Inviolable Rules)"], "split": "tune"},
+  {"id": "en-g4-56", "query": "how does MCP scenario 4.1 model clutch slip index and transmission wear", "expected": ["ideas/mcp-scenarios.md#Model Context Protocol (MCP) Server: Architecture, Scenarios & AI Agent Capabilities > 3. Deep-Dive Operational Scenarios > Domain 4: Predictive Component Health & Micro-Wear Modeling > Scenario 4.1: Clutch Slip Index & Transmission Degradation"], "split": "test"},
+  {"id": "en-g4-57", "query": "why is mapping node health heartbeats onto VSS blocked today", "expected": ["ideas/node-health-vss.md#Node health on VSS (Q-016, D-004): proposal for the user's approval > Why it is blocked today"], "split": "tune"},
+  {"id": "en-g4-58", "query": "how does Option C handle node heartbeats directly in linux-node", "expected": ["ideas/node-health-vss.md#Node health on VSS (Q-016, D-004): proposal for the user's approval > Option C: linux-node reads the heartbeats itself"], "split": "test"},
+  {"id": "en-g4-59", "query": "what fields are proposed in the D-084 fault catalog schema draft", "expected": ["ideas/physics-informed-anomaly.md#Physics-informed anomaly model and fault catalog (idea note) > 2. Fault catalog schema draft (D-084)"], "split": "tune"},
+  {"id": "en-g4-60", "query": "what provider terms govern training with synthetic LLM outputs", "expected": ["ideas/ride-llm.md#Ride LLM research brief (2026-11-26) > 3. Distillation and synthetic data > Terms on training with provider outputs (exact quotes fetched 2026-11-26)"], "split": "test"},
+  {"id": "en-g4-61", "query": "which vector stores are compared for running RAG on a Raspberry Pi", "expected": ["ideas/ride-llm.md#Ride LLM research brief (2026-11-26) > 4. RAG for technical manuals > Vector stores on a Pi"], "split": "tune"},
+  {"id": "en-g4-62", "query": "how should technical manuals and tables be chunked for RAG retrieval", "expected": ["ideas/ride-llm.md#Ride LLM research brief (2026-11-26) > 4. RAG for technical manuals > Chunking for manuals/tables [P]"], "split": "test"},
+  {"id": "en-g4-63", "query": "what is the neuro-symbolic knowledge graph approach in the Ride LLM brief", "expected": ["ideas/ride-llm.md#Ride LLM research brief (2026-11-26) > 5. Neuro-symbolic / knowledge graph"], "split": "tune"},
+  {"id": "en-g4-64", "query": "what are the stages of the recommended Ride LLM roadmap", "expected": ["ideas/ride-llm.md#Ride LLM research brief (2026-11-26) > 8. Recommendation: staged roadmap \"Ride LLM\""], "split": "test"},
+  {"id": "en-g4-65", "query": "what byte sizes result from the proposed ride-summary DID layout 0xFD40", "expected": ["ideas/ride-summary-did-layout.md#Ride-summary DID layout (C3 part 2b) — proposal, awaiting the user > Resulting sizes (scalar fields + 4 B header, computed from the current YAML)"], "split": "test"},
+  {"id": "en-g4-66", "query": "what did the DeepSeek compatibility review conclude on the ride-summary DID layout", "expected": ["ideas/ride-summary-did-layout.md#Ride-summary DID layout (C3 part 2b) — proposal, awaiting the user > Compatibility review (DeepSeek, 2026-11-02)"], "split": "tune"},
+  {"id": "en-g4-67", "query": "how does the hybrid relationship graph localise untagged anomalies", "expected": ["ideas/vehicle-agnostic-anomaly-reasoning.md#Vehicle-agnostic anomaly reasoning and generalisation (idea note) > 2. Relationship graph (hybrid)"], "split": "test"},
+  {"id": "en-g4-68", "query": "how is healthy baseline defined on a single possibly faulty motorcycle", "expected": ["ideas/vehicle-agnostic-anomaly-reasoning.md#Vehicle-agnostic anomaly reasoning and generalisation (idea note) > 5. Reference problem on a single, possibly faulty vehicle"], "split": "test"},
+  {"id": "en-g4-69", "query": "what guardrails constrain anomaly hypotheses in the vehicle-agnostic reasoning pipeline", "expected": ["ideas/vehicle-agnostic-anomaly-reasoning.md#Vehicle-agnostic anomaly reasoning and generalisation (idea note) > 3. Guardrails"], "split": "tune"},
+  {"id": "en-g4-70", "query": "what is the difference between Scale 1A and higher scale tiers in the signal taxonomy", "expected": ["ideas/vehicle-signal-taxonomy.md#Vehicle Signal Taxonomy Beyond the CL250 (Groups G and I, Scale Tiers) > 3. Scale tiers (product direction, D-078)"], "split": "test"}
  ],
  "weak_queries": [
-  {
-   "id": "en-w1",
-   "query": "best pasta recipe with basil and garlic",
-   "split": "tune"
-  },
-  {
-   "id": "en-w2",
-   "query": "quantum entanglement in superconducting qubits",
-   "split": "tune"
-  },
-  {
-   "id": "en-w3",
-   "query": "medieval architecture of gothic cathedrals",
-   "split": "tune"
-  },
-  {
-   "id": "en-w4",
-   "query": "football world cup final score 1998",
-   "split": "test"
-  },
-  {
-   "id": "en-w5",
-   "query": "zxqvbnm plokijuhy random gibberish",
-   "split": "test"
-  },
-  {
-   "id": "en-w6",
-   "query": "how to grow orchids indoors in winter",
-   "split": "test"
-  },
-  {
-   "id": "en-w-g4-01",
-   "query": "how to bake sourdough bread at home",
-   "split": "tune"
-  },
-  {
-   "id": "en-w-g4-02",
-   "query": "best beaches to visit in Greece in July",
-   "split": "test"
-  },
-  {
-   "id": "en-w-g4-03",
-   "query": "python asyncio event loop tutorial for beginners",
-   "split": "tune"
-  },
-  {
-   "id": "en-w-g4-04",
-   "query": "capital city and population of Peru",
-   "split": "test"
-  },
-  {
-   "id": "en-w-g4-05",
-   "query": "how to prune rose bushes in early spring",
-   "split": "tune"
-  },
-  {
-   "id": "en-w-g4-06",
-   "query": "piano chord progressions for jazz ballads",
-   "split": "test"
-  },
-  {
-   "id": "en-w-g4-07",
-   "query": "NBA finals MVP winners from 2010 to 2020",
-   "split": "tune"
-  },
-  {
-   "id": "en-w-g4-08",
-   "query": "watercolor painting wet on wet sky technique",
-   "split": "test"
-  }
+  {"id": "en-w1", "query": "best pasta recipe with basil and garlic", "split": "tune"},
+  {"id": "en-w2", "query": "quantum entanglement in superconducting qubits", "split": "tune"},
+  {"id": "en-w3", "query": "medieval architecture of gothic cathedrals", "split": "tune"},
+  {"id": "en-w4", "query": "football world cup final score 1998", "split": "tune"},
+  {"id": "en-w5", "query": "zxqvbnm plokijuhy random gibberish", "split": "tune"},
+  {"id": "en-w6", "query": "how to grow orchids indoors in winter", "split": "tune"},
+  {"id": "en-w-g4-01", "query": "how to bake sourdough bread at home", "split": "tune"},
+  {"id": "en-w-g4-02", "query": "best beaches to visit in Greece in July", "split": "test"},
+  {"id": "en-w-g4-03", "query": "python asyncio event loop tutorial for beginners", "split": "test"},
+  {"id": "en-w-g4-04", "query": "capital city and population of Peru", "split": "tune"},
+  {"id": "en-w-g4-05", "query": "how to prune rose bushes in early spring", "split": "test"},
+  {"id": "en-w-g4-06", "query": "piano chord progressions for jazz ballads", "split": "test"},
+  {"id": "en-w-g4-07", "query": "NBA finals MVP winners from 2010 to 2020", "split": "tune"},
+  {"id": "en-w-g4-08", "query": "watercolor painting wet on wet sky technique", "split": "tune"}
  ],
- "_comment": "Stratified 50/50 tune/test split across all 174 answerable + 14 weak queries per locale (seed=20261127; see tests/retrieval_eval/README.md). Never tune retrieval parameters on `test`."
+ "_comment": "Old items keep their original split (tune = written by the retrieval author and used to choose parameters; holdout = catalog complaint phrases, used only as a veto). New G4-7 items (ids with -g4-) are split 50/50 per stratum (new_catalog, new_docs, new weak) with random.Random(20261127); `test` holds only new items, never used to choose parameters. See tests/retrieval_eval/README.md."
 }

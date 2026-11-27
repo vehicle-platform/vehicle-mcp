@@ -823,7 +823,11 @@ def test_shipped_retrieval_eval_dataset_integrity_and_split() -> None:
     assert [q.expected for q in en_q] == [q.expected for q in tr_q]
     assert [q.split for q in en_q] == [q.split for q in tr_q]
     assert [q.split for q in en_w] == [q.split for q in tr_w]
-    assert {q.split for q in en_q} == {"tune", "test"}
+    assert {q.split for q in en_q} == {"tune", "test", "holdout"}
     assert {q.split for q in en_w} == {"tune", "test"}
-    assert sum(1 for q in en_q if q.split == "test") >= 80
+    # `test` holds only new G4-7 items: nothing the shipped parameters were chosen on
+    assert all("-g4-" in q.id for q in en_q + tr_q if q.split == "test")
+    assert all("-g4-" in q.id for q in en_w + tr_w if q.split == "test")
+    assert sum(1 for q in en_q if q.split == "test") >= 30
+    assert sum(1 for q in en_q if q.split == "holdout") == 62
     assert all(q.expected for q in en_q)
