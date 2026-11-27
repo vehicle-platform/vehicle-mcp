@@ -43,6 +43,11 @@ MAX_UNDATED = 50
 MAX_REPORT_JSON_CHARS = 200_000
 MAX_REPORT_TEXT_CHARS = 20_000
 MAX_MARKS_RETURNED = 200
+# D-133 item 1: the closed set of mark kinds; anything else is counted as unknown.
+MARK_KINDS = frozenset(
+    {"misfire", "noise", "vibration", "warning_light", "rough_road", "traffic", "other"}
+)
+_UNKNOWN_KIND = "unknown"
 
 _MARKS_NOTE = (
     "Rider-recorded event marks linked to the ride by UTC timestamp only (D-133); "
@@ -132,6 +137,32 @@ def _number(value: Any) -> int | float | None:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
     return value
+
+
+def _int_or_none(value: Any) -> int | None:
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def _ride_mark(raw: Any, start_ms: int | None) -> tuple[str, dict[str, Any], int, int]:
+    """One server mark -> (kind bucket, listed entry, malformed flag, unusable-time flag)."""
+    entry = raw if isinstance(raw, dict) else {}
+    raw_kind = entry.get("kind")
+    kind = raw_kind.strip() if isinstance(raw_kind, str) else ""
+    bucket = kind if kind in MARK_KINDS else _UNKNOWN_KIND
+    raw_t = _int_or_none(entry.get("t_utc"))
+    offset_s = (raw_t - start_ms) / 1000.0 if raw_t is not None and start_ms is not None else None
+    raw_note = entry.get("note")
+    note = raw_note.strip() if isinstance(raw_note, str) else ""
+    listing = {
+        "offset": (
+            quantity("mark_offset", "time offset from ride start", "s", offset_s)
+            if offset_s is not None
+            else None
+        ),
+        "kind": untrusted.mark(kind, key="kind") if kind else None,
+        "note": untrusted.mark(note, key="note") if note else None,
+    }
+    return bucket, listing, int(not kind), int(raw_t is None)
 
 
 def _round(value: Any) -> Any:
@@ -403,7 +434,7 @@ class VehicleTools:
 
         Calls GET /rides/{ride_id}/marks through the read-only source and returns
         labelled quantities (`{name, unit, value, label}`) plus the chronological
-        mark list with time offset from the ride start in seconds, kind, and
+        mark list with the time offset from the ride start (a labelled quantity), kind and
         optional note (wrapped as untrusted text). Never includes GPS position.
         A 404 (unknown ride or older server) returns `available: false` with a
         safe reason; other server errors raise ToolError.
@@ -418,8 +449,6 @@ class VehicleTools:
                 "kind": "ride_marks",
                 "session_id": session_id,
                 "reason": str(exc),
-                "values": [quantity("mark_count", "ride mark count", "count", 0)],
-                "marks": [],
                 "note": _MARKS_NOTE,
             }
         except SourceError as exc:
@@ -431,46 +460,37 @@ class VehicleTools:
                 "(expected an object with a 'marks' list)"
             )
 
-        raw_start = payload.get("start_utc_ms")
-        start_ms = (
-            raw_start if isinstance(raw_start, int) and not isinstance(raw_start, bool) else None
-        )
+        warnings: list[str] = []
+        start_ms = _int_or_none(payload.get("start_utc_ms"))
+        if start_ms is None:
+            warnings.append(
+                "the ride start time is missing or not a number: no mark offsets are given"
+            )
         raw_marks = payload["marks"]
+        # Counts cover every mark the server returned; only the listing is capped.
         kind_counts: Counter[str] = Counter()
+        malformed = 0
+        bad_time = 0
         marks_out: list[dict[str, Any]] = []
-        for entry in raw_marks[:MAX_MARKS_RETURNED]:
-            if not isinstance(entry, dict):
-                raise ToolError("vehicle-server returned a malformed ride mark entry")
-            raw_kind = entry.get("kind")
-            if not isinstance(raw_kind, str) or not raw_kind.strip():
-                raise ToolError("vehicle-server returned a ride mark without a kind")
-            marked_kind = untrusted.mark(raw_kind.strip(), key="kind")
-            kind_key = marked_kind if isinstance(marked_kind, str) else "other"
-            kind_counts[kind_key] += 1
+        for index, raw_entry in enumerate(raw_marks):
+            bucket, listing, is_malformed, no_time = _ride_mark(raw_entry, start_ms)
+            kind_counts[bucket] += 1
+            malformed += is_malformed
+            if index < MAX_MARKS_RETURNED:
+                marks_out.append(listing)
+                bad_time += no_time
 
-            raw_t = entry.get("t_utc")
-            offset_s: float | None = None
-            if start_ms is not None and isinstance(raw_t, int) and not isinstance(raw_t, bool):
-                offset_s = (raw_t - start_ms) / 1000.0
-
-            raw_note = entry.get("note")
-            marked_note = (
-                untrusted.mark(raw_note.strip(), key="note")
-                if isinstance(raw_note, str) and raw_note.strip()
-                else None
+        if kind_counts[_UNKNOWN_KIND] - malformed:
+            warnings.append(
+                f"{kind_counts[_UNKNOWN_KIND] - malformed} mark(s) have a kind outside the "
+                "known set and are counted as unknown"
             )
-            marks_out.append(
-                {
-                    "offset_s": _round(offset_s) if offset_s is not None else None,
-                    "offset": (
-                        quantity("mark_offset", "time offset from ride start", "s", offset_s)
-                        if offset_s is not None
-                        else None
-                    ),
-                    "kind": marked_kind,
-                    "note": marked_note,
-                }
+        if malformed:
+            warnings.append(
+                f"{malformed} mark(s) are malformed (no usable kind): counted as unknown"
             )
+        if bad_time:
+            warnings.append(f"{bad_time} listed mark(s) have no usable time: offset not given")
 
         values: list[dict[str, Any]] = [
             quantity("mark_count", "ride mark count", "count", len(raw_marks))
@@ -496,6 +516,8 @@ class VehicleTools:
         if len(raw_marks) > MAX_MARKS_RETURNED:
             result["truncated"] = True
             result["marks_omitted"] = len(raw_marks) - MAX_MARKS_RETURNED
+        if warnings:
+            result["warnings"] = warnings
         return result
 
     def list_fault_catalog(self, subsystem: str | None = None) -> dict[str, Any]:
