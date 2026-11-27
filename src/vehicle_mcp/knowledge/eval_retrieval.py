@@ -18,6 +18,7 @@ from typing import Any
 
 from .embedder import Embedder
 from .search import KnowledgeSearch
+from .settings import RetrievalSettings
 from .store import Chunk
 
 DEFAULT_K = 5
@@ -219,13 +220,15 @@ def evaluate_all(
     splits: Sequence[str] = SPLITS,
     lexical_top_n: int | None = None,
     min_similarity: float | None = None,
+    retrieval: RetrievalSettings | None = None,
 ) -> list[LocaleReport]:
     """Evaluates each requested locale and split against `db_path` using `embedder`."""
-    options: dict[str, Any] = {}
-    if lexical_top_n is not None:
-        options["lexical_top_n"] = lexical_top_n
     searcher = KnowledgeSearch(
-        db_path, embedder_factory=lambda: embedder, min_similarity=min_similarity, **options
+        db_path,
+        embedder_factory=lambda: embedder,
+        lexical_top_n=lexical_top_n,
+        min_similarity=min_similarity,
+        retrieval=retrieval,
     )
     reports: list[LocaleReport] = []
     for locale in locales:

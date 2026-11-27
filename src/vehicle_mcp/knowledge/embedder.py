@@ -120,8 +120,18 @@ class OnnxE5Embedder:
     model_id = MODEL_ID
     dim = MODEL_DIM
     min_similarity = E5_MIN_COSINE
+    _query_prefix: str = QUERY_PREFIX
+    _passage_prefix: str = PASSAGE_PREFIX
 
-    def __init__(self, model_dir: Path | None = None, threads: int | None = None) -> None:
+    def __init__(
+        self,
+        model_dir: Path | None = None,
+        threads: int | None = None,
+        *,
+        use_prefixes: bool = True,
+        query_prefix: str = QUERY_PREFIX,
+        passage_prefix: str = PASSAGE_PREFIX,
+    ) -> None:
         directory = model_dir or default_model_dir()
         if not model_present(directory):
             raise KnowledgeUnavailable(
@@ -136,6 +146,8 @@ class OnnxE5Embedder:
                 "the optional 'rag' extra is not installed (pip install 'vehicle-mcp[rag]')"
             ) from None
         self._np: Any = numpy
+        self._query_prefix = query_prefix if use_prefixes else ""
+        self._passage_prefix = passage_prefix if use_prefixes else ""
         options = onnxruntime.SessionOptions()
         options.intra_op_num_threads = threads or min(4, os.cpu_count() or 1)
         self._session = onnxruntime.InferenceSession(
@@ -145,10 +157,10 @@ class OnnxE5Embedder:
         self._tokenizer = Tokenizer.from_file(str(directory / "tokenizer.json"))
 
     def embed_queries(self, texts: Sequence[str]) -> list[list[float]]:
-        return self._embed([QUERY_PREFIX + t for t in texts], QUERY_MAX_TOKENS)
+        return self._embed([self._query_prefix + t for t in texts], QUERY_MAX_TOKENS)
 
     def embed_passages(self, texts: Sequence[str]) -> list[list[float]]:
-        return self._embed([PASSAGE_PREFIX + t for t in texts], PASSAGE_MAX_TOKENS)
+        return self._embed([self._passage_prefix + t for t in texts], PASSAGE_MAX_TOKENS)
 
     def _embed(self, texts: Sequence[str], max_tokens: int) -> list[list[float]]:
         out: list[list[float]] = []

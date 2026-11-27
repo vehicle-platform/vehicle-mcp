@@ -24,16 +24,22 @@ from typing import Any
 from vehicle_mcp import matching
 
 from . import KnowledgeUnavailable
+from .settings import (
+    DEFAULT_FTS_POOL,
+    DEFAULT_LEXICAL_TOP_N,
+    DEFAULT_RRF_K,
+    DEFAULT_VECTOR_POOL_MIN,
+    RetrievalSettings,
+)
 
 SCHEMA_VERSION = "2"
-RRF_K = 60
+RRF_K = DEFAULT_RRF_K
 MAX_QUERY_TOKENS = 32
-VECTOR_POOL_MIN = 30
+VECTOR_POOL_MIN = DEFAULT_VECTOR_POOL_MIN
 VECTOR_POOL_PER_K = 5
 VECTOR_FETCH_MAX = 500
-FTS_POOL = 50
+FTS_POOL = DEFAULT_FTS_POOL
 DEFAULT_MIN_SIMILARITY = 0.0
-DEFAULT_LEXICAL_TOP_N = 2
 
 _WORD = re.compile(r"\w+", re.UNICODE)
 _TR_MIN_SUFFIX_LEN = 2  # one-letter suffixes over-strip ("lamba" -> "lamb")
@@ -172,9 +178,16 @@ def pack_vector(vector: Sequence[float]) -> bytes:
 class KnowledgeIndex:
     """Open (or create) an index file. Use `open_index` / `create_index`."""
 
-    def __init__(self, conn: sqlite3.Connection, dim: int) -> None:
+    def __init__(
+        self,
+        conn: sqlite3.Connection,
+        dim: int,
+        *,
+        retrieval: RetrievalSettings | None = None,
+    ) -> None:
         self._conn = conn
         self.dim = dim
+        self._retrieval = retrieval or RetrievalSettings()
 
     def close(self) -> None:
         self._conn.close()
@@ -288,7 +301,10 @@ class KnowledgeIndex:
         stem_tr: bool = False,
         expand_synonyms: bool = True,
         drop_stopwords: bool = True,
+        fts_pool: int = FTS_POOL,
     ) -> list[int]:
+        if fts_pool <= 0:
+            return []
         match = fts_query(
             query,
             locales=locales,
@@ -307,7 +323,7 @@ class KnowledgeIndex:
             sql += f" AND c.locale IN ({','.join('?' * len(locales))})"
             args.extend(locales)
         sql += " ORDER BY bm25(chunks_fts), chunks_fts.rowid LIMIT ?"
-        args.append(FTS_POOL)
+        args.append(fts_pool)
         return [int(r[0]) for r in self._conn.execute(sql, args)]
 
     def _nearest(
@@ -317,10 +333,14 @@ class KnowledgeIndex:
         locales: Sequence[str] | None,
         *,
         min_similarity: float = DEFAULT_MIN_SIMILARITY,
+        vector_pool_min: int = VECTOR_POOL_MIN,
         cache: dict[int, tuple[str, str]] | None = None,
     ) -> list[tuple[int, float]]:
         total = self.count()
         if total == 0:
+            return []
+        keep = max(vector_pool_min, VECTOR_POOL_PER_K * k)
+        if keep <= 0:
             return []
         fetch = min(total, VECTOR_FETCH_MAX)
         rows = self._conn.execute(
@@ -329,7 +349,6 @@ class KnowledgeIndex:
             (pack_vector(vector), fetch),
         ).fetchall()
         rows.sort(key=lambda row: (row[1], row[0]))  # a distance tie breaks on the chunk id
-        keep = max(VECTOR_POOL_MIN, VECTOR_POOL_PER_K * k)
         out: list[tuple[int, float]] = []
         for rowid, distance in rows:
             sim = 1.0 - float(distance)
@@ -365,17 +384,35 @@ class KnowledgeIndex:
         list). Relevance is decided on the underlying signals, never on the rank-based fused
         score: a group survives when its best chunk has cosine similarity >= `min_similarity`
         (it is in the vector pool) or when it is among the first `lexical_top_n` BM25 groups.
-        With `lexical_top_n = 0` only vector hits survive.
+        With `lexical_top_n = 0` or `fts_weight = 0` only vector hits survive; with
+        `vector_weight = 0` only FTS hits survive.
         """
+        cfg = self._retrieval
         cache: dict[int, tuple[str, str]] = {}
-        bm25_ids = self._bm25(
-            query,
-            locales,
-            stem_tr=stem_tr,
-            expand_synonyms=expand_synonyms,
-            drop_stopwords=drop_stopwords,
+        bm25_ids = (
+            self._bm25(
+                query,
+                locales,
+                stem_tr=stem_tr,
+                expand_synonyms=expand_synonyms,
+                drop_stopwords=drop_stopwords,
+                fts_pool=cfg.fts_pool,
+            )
+            if cfg.fts_weight > 0.0 and lexical_top_n > 0
+            else []
         )
-        near = self._nearest(vector, k, locales, min_similarity=min_similarity, cache=cache)
+        near = (
+            self._nearest(
+                vector,
+                k,
+                locales,
+                min_similarity=min_similarity,
+                vector_pool_min=cfg.vector_pool_min,
+                cache=cache,
+            )
+            if cfg.vector_weight > 0.0
+            else []
+        )
         bm25_group: dict[str, tuple[int, int]] = {}
         for cid in bm25_ids:
             group = self._locale_and_ref_of(cid, cache)[1] or f"#{cid}"
@@ -386,6 +423,17 @@ class KnowledgeIndex:
             group = self._locale_and_ref_of(cid, cache)[1] or f"#{cid}"
             if group not in vec_group:
                 vec_group[group] = (len(vec_group) + 1, cid, sim)
+        return self._fuse(bm25_group, vec_group, k=k, lexical_top_n=lexical_top_n)
+
+    def _fuse(
+        self,
+        bm25_group: dict[str, tuple[int, int]],
+        vec_group: dict[str, tuple[int, int, float]],
+        *,
+        k: int,
+        lexical_top_n: int,
+    ) -> list[Hit]:
+        cfg = self._retrieval
         scored: list[tuple[float, int, int | None, int | None, float | None]] = []
         for group in set(bm25_group) | set(vec_group):
             bm = bm25_group.get(group)
@@ -394,8 +442,10 @@ class KnowledgeIndex:
                 bm = None  # a weak lexical match does not count as evidence on its own
             if bm is None and vc is None:
                 continue
-            score = (1.0 / (RRF_K + bm[0]) if bm else 0.0) + (1.0 / (RRF_K + vc[0]) if vc else 0.0)
-            if bm is not None and (vc is None or bm[1] == vc[1] or bm[0] <= vc[0]):
+            bm_score = (cfg.fts_weight / (cfg.rrf_k + bm[0])) if bm else 0.0
+            vc_score = (cfg.vector_weight / (cfg.rrf_k + vc[0])) if vc else 0.0
+            score = bm_score + vc_score
+            if bm is not None and (vc is None or bm[1] == vc[1] or bm_score >= vc_score):
                 cid = bm[1]
             elif vc is not None:
                 cid = vc[1]
@@ -482,7 +532,9 @@ def _model(conn: sqlite3.Connection) -> str | None:
     return None if row is None else str(row[0])
 
 
-def open_index(path: Path, *, model_id: str) -> KnowledgeIndex:
+def open_index(
+    path: Path, *, model_id: str, retrieval: RetrievalSettings | None = None
+) -> KnowledgeIndex:
     """Open an existing index for searching; raises KnowledgeUnavailable with a reason."""
     if not path.is_file():
         raise KnowledgeUnavailable(
@@ -517,4 +569,4 @@ def open_index(path: Path, *, model_id: str) -> KnowledgeIndex:
             f"{version[0] if version else 'unknown'}, expected {SCHEMA_VERSION}); "
             "rebuild it with `vehicle-mcp-index build --rebuild`"
         )
-    return KnowledgeIndex(conn, int(dim_row[0]))
+    return KnowledgeIndex(conn, int(dim_row[0]), retrieval=retrieval)
